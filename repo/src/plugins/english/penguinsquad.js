@@ -29,8 +29,18 @@ var Plugin = /** @class */ (function () {
     this.id = 'penguinsquad';
     this.name = 'Penguin Squad-P';
     this.site = 'https://penguin-squad.com/';
-    this.version = '1.1.0';
+    this.version = '1.1.1';
     this.icon = 'icons/penguinsquad.png';
+    // Filters the site's /novels page accepts (checked 2026-11-13: genre and tag
+    // take one name each; status ongoing|completed|dropped; illustrated=true;
+    // sort updated|views|newest). Genre and tag names as the page lists them.
+    this.filters = {
+      sort: { type: 'Picker', label: 'Sort', value: 'updated', options: [{"label": "Recently updated", "value": "updated"}, {"label": "Most viewed", "value": "views"}, {"label": "Newest", "value": "newest"}] },
+      genre: { type: 'Picker', label: 'Genre', value: '', options: [{"label": "All", "value": ""}, {"label": "Fantasy", "value": "Fantasy"}, {"label": "Harem", "value": "Harem"}, {"label": "Gender Bender", "value": "Gender Bender"}, {"label": "Action", "value": "Action"}, {"label": "Modern Fantasy", "value": "Modern Fantasy"}, {"label": "Comedy", "value": "Comedy"}, {"label": "Romance", "value": "Romance"}, {"label": "Adventure", "value": "Adventure"}, {"label": "Slice of Life", "value": "Slice of Life"}, {"label": "Drama", "value": "Drama"}, {"label": "Supernatural", "value": "Supernatural"}, {"label": "Murim", "value": "Murim"}, {"label": "Sci-Fi", "value": "Sci-Fi"}, {"label": "Horror", "value": "Horror"}, {"label": "Martial Arts", "value": "Martial Arts"}, {"label": "Tragedy", "value": "Tragedy"}, {"label": "Xianxia", "value": "Xianxia"}, {"label": "Alternate History", "value": "Alternate History"}, {"label": "Boys' Love", "value": "Boys' Love"}, {"label": "Girls' Love", "value": "Girls' Love"}] },
+      tag: { type: 'Picker', label: 'Tag', value: '', options: [{"label": "All", "value": ""}, {"label": "Overpowered MC", "value": "Overpowered MC"}, {"label": "Misunderstandings", "value": "Misunderstandings"}, {"label": "Modern", "value": "Modern"}, {"label": "Obsessive Characters", "value": "Obsessive Characters"}, {"label": "Academy", "value": "Academy"}, {"label": "Dungeon", "value": "Dungeon"}, {"label": "Medieval", "value": "Medieval"}, {"label": "Regression", "value": "Regression"}, {"label": "Transmigration", "value": "Transmigration"}, {"label": "Post-Apocalyptic", "value": "Post-Apocalyptic"}, {"label": "Regret", "value": "Regret"}, {"label": "Military", "value": "Military"}, {"label": "Rebirth", "value": "Rebirth"}, {"label": "System", "value": "System"}, {"label": "Game", "value": "Game"}, {"label": "Redemption", "value": "Redemption"}, {"label": "Sports", "value": "Sports"}, {"label": "Streaming", "value": "Streaming"}] },
+      status: { type: 'Picker', label: 'Status', value: '', options: [{"label": "All", "value": ""}, {"label": "Ongoing", "value": "ongoing"}, {"label": "Completed", "value": "completed"}, {"label": "Dropped", "value": "dropped"}] },
+      illustrated: { type: 'Switch', label: 'Illustrated only', value: false },
+    };
   }
 
   Plugin.prototype.abs = function (href) {
@@ -103,9 +113,16 @@ var Plugin = /** @class */ (function () {
     try { return JSON.parse(finalSlice); } catch (e) { return null; }
   }
 
-  Plugin.prototype.popularNovels = async function (page) {
+  Plugin.prototype.popularNovels = async function (page, options) {
+    // The whole (filtered) catalogue is one page.
     if (page !== 1) return [];
-    var body = await fetchApi(this.site + 'novels')
+    var f = (options && options.filters) || {}, q = [];
+    var val = function (k) { return f[k] && f[k].value; };
+    var sort = options && options.showLatestNovels ? 'updated' : (val('sort') || 'updated');
+    if (sort !== 'updated') q.push('sort=' + sort);
+    ['genre', 'tag', 'status'].forEach(function (k) { if (val(k)) q.push(k + '=' + encodeURIComponent(val(k))); });
+    if (val('illustrated')) q.push('illustrated=true');
+    var body = await fetchApi(this.site + 'novels' + (q.length ? '?' + q.join('&') : ''))
       .then(function (r) { return r.text(); });
     var $ = cheerio.load(body);
     var self = this, novels = [], seen = {};
@@ -117,11 +134,7 @@ var Plugin = /** @class */ (function () {
       if (!name) return;
       var img = a.find('img').first();
       seen[path] = 1;
-      novels.push({
-        name: name,
-        path: path,
-        cover: img.attr('src') || defaultCover,
-      });
+      novels.push({ name: name, path: path, cover: img.attr('src') || defaultCover });
     });
     return novels;
   };

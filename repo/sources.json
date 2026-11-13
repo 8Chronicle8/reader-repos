@@ -4,7 +4,7 @@
       "id": "thesuniscold",
       "name": "The Sun Is Cold-P",
       "site": "https://thesuniscold.translatednovels.com/",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "lang": "English",
       "engine": "wpblog"
     },
@@ -20,7 +20,7 @@
       "id": "penguinsquad",
       "name": "Penguin Squad-P",
       "site": "https://penguin-squad.com/",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "lang": "English",
       "engine": "bespoke-nextrsc"
     },
@@ -52,7 +52,7 @@
       "id": "taptotale",
       "name": "TapToTale-P",
       "site": "https://taptotale.com/",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "lang": "English",
       "engine": "universal"
     },
@@ -60,7 +60,7 @@
       "id": "novellunar",
       "name": "Novellunar-P",
       "site": "https://novellunar.com/",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "lang": "English",
       "engine": "bespoke-nextrsc"
     },
@@ -76,7 +76,7 @@
       "id": "brightnovels",
       "name": "Bright Novels-P",
       "site": "https://brightnovels.com/",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "lang": "English",
       "engine": "bespoke-inertia"
     },

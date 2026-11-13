@@ -53,8 +53,13 @@ var Plugin = /** @class */ (function () {
     this.id = 'thesuniscold';
     this.name = 'The Sun Is Cold-P';
     this.site = 'https://thesuniscold.translatednovels.com/';
-    this.version = '1.1.0';
+    this.version = '1.1.1';
     this.icon = 'icons/thesuniscold.png';
+    // Four novels with no genre or status data on the site: sorting is all
+    // there is to offer.
+    this.filters = {
+      sort: { type: 'Picker', label: 'Sort', value: 'site', options: [{"label": "Site order", "value": "site"}, {"label": "Title A-Z", "value": "asc"}, {"label": "Title Z-A", "value": "desc"}] },
+    };
   }
   Plugin.prototype.getPath = function (url) {
     if (!url) return null;
@@ -65,11 +70,18 @@ var Plugin = /** @class */ (function () {
     }
     return null;
   };
-  Plugin.prototype.popularNovels = async function (page) {
+  Plugin.prototype.popularNovels = async function (page, options) {
     if (page !== 1) return [];
-    return NOVELS.map(function (n) {
+    var f = (options && options.filters) || {};
+    var sort = (f.sort && f.sort.value) || 'site';
+    var list = NOVELS.map(function (n) {
       return { name: n.name, path: n.path, cover: n.cover || defaultCover };
     });
+    if (sort !== 'site') {
+      list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      if (sort === 'desc') list.reverse();
+    }
+    return list;
   };
   Plugin.prototype.parseNovel = async function (novelPath) {
     var slug = novelPath.replace(/\/+$/, '').split('/').pop();

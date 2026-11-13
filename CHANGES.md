@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-11-13 (latest) — sort and filters for the remaining plugins (1.1.1)
+
+Each option was taken from what the site itself accepts and checked live:
+- **Penguin Squad:** sort (updated, views, newest), genre, tag, status,
+  illustrated; result counts equal the site's own (Action 74, Academy 40,
+  completed 42, illustrated 89, Action+completed 10).
+- **Bright Novels:** sort (trending, newest, updated, title A-Z/Z-A), status,
+  genres (any of), tags typed by name (758 tags; names converted to the site's
+  slugs, matching all 758). Origin is not offered: the site ignores it.
+- **TapToTale:** sort (most chapters, title, newest added); the site has no
+  genres or tags.
+- **The Sun Is Cold:** sort by title; four novels and no genre or status data.
+- **Novellunar:** sort (ranking, latest), its two listing pages. Not checkable
+  live from here (Cloudflare); genre or status filters could not be found.
+
 ## 2026-11-13 (later) — Fenrir session, Boti filters, Anikku URL
 
 - **Fenrir Realm 1.1.1:** 1.1.0 failed even after a WebView check: it sent its

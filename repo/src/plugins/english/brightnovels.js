@@ -59,8 +59,19 @@ var Plugin = /** @class */ (function () {
     this.id = 'brightnovels';
     this.name = 'Bright Novels-P';
     this.site = SITE;
-    this.version = '1.1.0';
+    this.version = '1.1.1';
     this.icon = 'icons/brightnovels.png';
+    // Filters the site's /series page accepts (checked 2026-11-13): sort
+    // trending|updated|title (+ order=asc), nothing = newest; status
+    // ongoing|completed|hiatus; genres and tags as comma-separated slugs (any
+    // of). Genre list from the page's own props. There are 758 tags, so they
+    // are typed by name rather than ticked.
+    this.filters = {
+      sort: { type: 'Picker', label: 'Sort', value: 'trending', options: [{"label": "Trending", "value": "trending"}, {"label": "Newest", "value": ""}, {"label": "Recently updated", "value": "updated"}, {"label": "Title A-Z", "value": "title:asc"}, {"label": "Title Z-A", "value": "title:desc"}] },
+      status: { type: 'Picker', label: 'Status', value: '', options: [{"label": "All", "value": ""}, {"label": "Ongoing", "value": "ongoing"}, {"label": "Completed", "value": "completed"}, {"label": "Hiatus", "value": "hiatus"}] },
+      genres: { type: 'Checkbox', label: 'Genres (any of)', value: [], options: [{"label": "Action", "value": "action"}, {"label": "Adult", "value": "adult"}, {"label": "Adventure", "value": "adventure"}, {"label": "Comedy", "value": "comedy"}, {"label": "Drama", "value": "drama"}, {"label": "Ecchi", "value": "ecchi"}, {"label": "Fantasy", "value": "fantasy"}, {"label": "Gender Bender", "value": "gender-bender"}, {"label": "Harem", "value": "harem"}, {"label": "Historical", "value": "historical"}, {"label": "Horror", "value": "horror"}, {"label": "Josei", "value": "josei"}, {"label": "Martial Arts", "value": "martial-arts"}, {"label": "Mature", "value": "mature"}, {"label": "Mecha", "value": "mecha"}, {"label": "Mystery", "value": "mystery"}, {"label": "Psychological", "value": "psychological"}, {"label": "Romance", "value": "romance"}, {"label": "School Life", "value": "school-life"}, {"label": "Sci-fi", "value": "sci-fi"}, {"label": "Seinen", "value": "seinen"}, {"label": "Shoujo", "value": "shoujo"}, {"label": "Shoujo Ai", "value": "shoujo-ai"}, {"label": "Shounen", "value": "shounen"}, {"label": "Shounen Ai", "value": "shounen-ai"}, {"label": "Slice of Life", "value": "slice-of-life"}, {"label": "Smut", "value": "smut"}, {"label": "Sports", "value": "sports"}, {"label": "Supernatural", "value": "supernatural"}, {"label": "Tragedy", "value": "tragedy"}, {"label": "Wuxia", "value": "wuxia"}, {"label": "Xianxia", "value": "xianxia"}, {"label": "Xuanhuan", "value": "xuanhuan"}, {"label": "Yaoi", "value": "yaoi"}, {"label": "Yuri", "value": "yuri"}] },
+      tags: { type: 'Text', label: 'Tags (names, comma-separated, any of)', value: '' },
+    };
     this.pluginSettings = {
       proxyUrl: {
         value: '',
@@ -108,14 +119,32 @@ var Plugin = /** @class */ (function () {
     };
   }
 
-  Plugin.prototype.popularNovels = async function (page) {
-    // Default browse order surfaces brand-new (chapter-less) entries first;
-    // `trending` ranks by reader activity, i.e. novels that actually have
-    // chapters to read.
-    var body = await fetchApi(SITE + 'series?sort=trending&page=' + page).then(function (r) { return r.text(); });
+  // Tag names to the site's slugs: lowercase, '/' and apostrophes dropped,
+  // other runs of non-alphanumerics -> '-' (matches all 758 site tags).
+  function tagSlugs(text) {
+    return String(text || '').split(',').map(function (t) {
+      return t.toLowerCase().replace(/['\u2019\/]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    }).filter(Boolean);
+  }
+  Plugin.prototype.popularNovels = async function (page, options) {
+    var opts = options || {}, f = opts.filters || {};
+    var val = function (k) { return f[k] && f[k].value; };
+    var sort = opts.showLatestNovels ? 'updated' : (val('sort') == null ? 'trending' : val('sort'));
+    var q = ['page=' + page];
+    if (sort) {
+      var parts = String(sort).split(':');
+      q.push('sort=' + parts[0]);
+      if (parts[1]) q.push('order=' + parts[1]);
+    }
+    if (val('status')) q.push('status=' + encodeURIComponent(val('status')));
+    var genres = val('genres') || [];
+    if (genres.length) q.push('genres=' + genres.map(encodeURIComponent).join(','));
+    var tags = tagSlugs(val('tags'));
+    if (tags.length) q.push('tags=' + tags.map(encodeURIComponent).join(','));
+    var body = await fetchApi(SITE + 'series?' + q.join('&')).then(function (r) { return r.text(); });
     var props = inertiaProps(body);
     var list = props && props.seriesList && props.seriesList.data;
-    if (!Array.isArray(list)) return [];
+    if (!Array.isArray(list)) throw new Error('Bright Novels returned no series list (the page layout may have changed)');
     return list.map(mapNovel);
   };
 

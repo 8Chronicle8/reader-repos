@@ -19,17 +19,17 @@ generate, test and back them up:
 | Plugin | Site | Filters | Hide locked chapters |
 |---|---|---|---|
 | Boti Translation-P | botitranslation.com | sort (popular, translations, words, updated), genre, status | yes |
-| Bright Novels-P | brightnovels.com | – | yes |
+| Bright Novels-P | brightnovels.com | sort (trending, newest, updated, title), status, genres, tags (typed) | yes |
 | Doby Translations-P | dobytranslations.com | genre, type, status, order | – (paid chapters are not listed) |
 | Fenrir Realm-P | fenrirealm.com | sort, status, genres | yes |
 | Genesis Studio-P | genesistudio.com | sort, genres | yes |
 | NovelDex-P | noveldex.io | sort, type, status, origin, genre/tag include+exclude, chapters | yes |
 | Noice Translations-P | noicetranslations.com | genre, status, author, artist, year, adult, order | yes |
-| Novellunar-P | novellunar.com | – | – |
-| Penguin Squad-P | penguin-squad.com | – | yes |
+| Novellunar-P | novellunar.com | sort (ranking, latest) | – |
+| Penguin Squad-P | penguin-squad.com | sort (updated, views, newest), genre, tag, status, illustrated | yes |
 | Primodial Translation-P | primodialtranslation.com | genre, type, status, order | – (paid chapters are not listed) |
-| TapToTale-P | taptotale.com | – | – |
-| The Sun Is Cold-P | thesuniscold.translatednovels.com | – | – |
+| TapToTale-P | taptotale.com | sort (chapters, title, newest); the site has no genres or tags | – |
+| The Sun Is Cold-P | thesuniscold.translatednovels.com | sort (title); four novels, no genre or status data | – |
 | WuxiaWorld.site-P | wuxiaworld.site | genre, status, author, artist, year, adult, order | yes |
 
 "Hide locked chapters" is in each plugin's settings. Locked (paid) chapters are

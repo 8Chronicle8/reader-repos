@@ -63,8 +63,13 @@ var Plugin = /** @class */ (function () {
     this.id = 'novellunar';
     this.name = 'Novellunar-P';
     this.site = SITE;
-    this.version = '1.1.0';
+    this.version = '1.1.1';
     this.icon = 'icons/novellunar.png';
+    // The site's two listing pages; nothing else could be read while it sits
+    // behind Cloudflare (2026-11), so there is no genre or status filter.
+    this.filters = {
+      sort: { type: 'Picker', label: 'Sort', value: 'ranking', options: [{"label": "Ranking", "value": "ranking"}, {"label": "Latest", "value": "latest"}] },
+    };
   }
 
   Plugin.prototype.abs = function (href) {
@@ -178,9 +183,11 @@ var Plugin = /** @class */ (function () {
     return out;
   };
 
-  Plugin.prototype.popularNovels = async function (page) {
-    var path = page > 1 ? 'latest' : 'ranking';
-    if (page > 2) return [];
+  Plugin.prototype.popularNovels = async function (page, options) {
+    // Each listing is a single page.
+    if (page !== 1) return [];
+    var f = (options && options.filters) || {};
+    var path = (options && options.showLatestNovels) ? 'latest' : ((f.sort && f.sort.value) || 'ranking');
     var html = await pageText(SITE + path);
     return this.cardsFrom(html);
   };

@@ -111,9 +111,24 @@ The website itself is behind a Cloudflare challenge; the API is not.
 
 ### brightnovels.com
 Laravel + Inertia.js: page props are JSON in `<div id="app" data-page="...">`.
+`/series` accepts `sort=trending|updated|title` (+ `order=asc`; nothing =
+newest), `status=ongoing|completed|hiatus`, `genres=<slug,...>` and
+`tags=<slug,...>` (comma = any of); `origin` in any form is ignored. Tag slugs
+drop `/` and apostrophes (`College/University` -> `collegeuniversity`); the
+plugin's conversion matches all 758 site tags.
 Its Cloudflare has at times refused the app's TLS fingerprint with no
 challenge; the plugin can route through a user-run proxy (setting "Proxy URL",
 `tools/cf-worker.js`). Direct access worked on 2026-11-13.
+
+### penguin-squad.com
+`/novels` returns the whole catalogue (234) and accepts `genre=<name>`,
+`tag=<name>` (one each), `status=ongoing|completed|dropped`,
+`illustrated=true`, `sort=views|newest` (default updated). Language values
+are not exposed and no guess had an effect, so there is no language filter.
+
+### taptotale.com
+Each novel is a WordPress category (127, flat, no tags); sorting uses the REST
+API's `orderby=count|name|id`.
 
 ### novellunar.com
 Next.js App Router; content lives in the `self.__next_f.push` RSC stream

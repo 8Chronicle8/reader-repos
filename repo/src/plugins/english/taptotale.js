@@ -32,8 +32,13 @@ var Plugin = /** @class */ (function () {
     this.id = 'taptotale';
     this.name = 'TapToTale-P';
     this.site = 'https://taptotale.com/';
-    this.version = '1.1.0';
+    this.version = '1.1.1';
     this.icon = 'icons/taptotale.png';
+    // Each novel is a WordPress category; the REST API sorts categories by
+    // chapter count, name or id. The site has no genres or tags to filter on.
+    this.filters = {
+      sort: { type: 'Picker', label: 'Sort', value: 'count:desc', options: [{"label": "Most chapters", "value": "count:desc"}, {"label": "Title A-Z", "value": "name:asc"}, {"label": "Title Z-A", "value": "name:desc"}, {"label": "Newest added", "value": "id:desc"}] },
+    };
   }
 
   function coverFromDesc(html) {
@@ -48,8 +53,11 @@ var Plugin = /** @class */ (function () {
   }
 
   Plugin.prototype.popularNovels = async function (page, options) {
-    var res = await fetchApi(this.site +
-      'wp-json/wp/v2/categories?per_page=100&orderby=count&order=desc&page=' + page)
+    var f = (options && options.filters) || {};
+    var sort = (options && options.showLatestNovels) ? 'id:desc' : ((f.sort && f.sort.value) || 'count:desc');
+    var parts = sort.split(':');
+    var res = await fetchApi(this.site + 'wp-json/wp/v2/categories?per_page=100&orderby=' + parts[0] +
+      '&order=' + parts[1] + '&page=' + page)
       .then(function (r) { return r.json(); });
     if (!Array.isArray(res)) return [];
     return res.filter(function (c) { return c.count > 0; }).map(function (c) {
