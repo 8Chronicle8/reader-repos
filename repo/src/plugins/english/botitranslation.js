@@ -37,8 +37,44 @@ var Plugin = /** @class */ (function () {
     this.id = 'botitranslation';
     this.name = 'Boti Translation-P';
     this.site = 'https://www.botitranslation.com/';
-    this.version = '1.1.0';
+    this.version = '1.1.1';
     this.icon = 'icons/botitranslation.png';
+    // Sorts are the site's own ranking lists; genre ids and names as the API
+    // reports them (2026-11-13); status 1 = ongoing, 2 = completed.
+    this.filters = {
+      sort: {
+        type: 'Picker', label: 'Sort', value: 'MostPopularLocal',
+        options: [
+          { label: 'Most popular', value: 'MostPopularLocal' },
+          { label: 'Popular translations', value: 'TranslationMostPopularLocal' },
+          { label: 'Most words', value: 'MostWordCountLocal' },
+          { label: 'Recently updated', value: 'LastUpdatedLocal' },
+        ],
+      },
+      status: {
+        type: 'Picker', label: 'Status', value: '',
+        options: [{ label: 'All', value: '' }, { label: 'Ongoing', value: '1' }, { label: 'Completed', value: '2' }],
+      },
+      genre: {
+        type: 'Checkbox', label: 'Genres (any of)', value: [],
+        options: [
+          { label: "Fantasy", value: '1' },
+          { label: "Sci-fi", value: '2' },
+          { label: "Sports", value: '3' },
+          { label: "Urban", value: '4' },
+          { label: "Eastern Fantasy", value: '5' },
+          { label: "Horror&Thriller", value: '6' },
+          { label: "Video Game", value: '7' },
+          { label: "History", value: '8' },
+          { label: "War", value: '9' },
+          { label: "Urban Romance", value: '10' },
+          { label: "Fantasy Romance", value: '11' },
+          { label: "Historical Romance", value: '12' },
+          { label: "Teen", value: '13' },
+          { label: "LGBT+", value: '14' },
+        ],
+      },
+    };
   }
 
   function api(path, params) {
@@ -66,12 +102,47 @@ var Plugin = /** @class */ (function () {
     };
   }
 
-  Plugin.prototype.popularNovels = async function (page, options) {
-    var res = await api('/content/books', {
-      pageNumber: page, pageSize: PAGE_SIZE,
+  // The site's ranking lists (POST, the same body its home page sends). They
+  // hold this site's own catalogue and page on the server, but ignore genre
+  // and status, so those filters run here over the whole list of the chosen
+  // order, fetched once and kept for ten minutes.
+  async function rankList(name, page, size) {
+    var res = await fetchApi(API + '/content/books/custom/' + name, {
+      method: 'POST',
+      headers: { 'site-domain': SITE_DOMAIN, 'Accept': 'application/json', 'Content-Type': 'application/json',
+        'Referer': 'https://www.botitranslation.com/' },
+      body: JSON.stringify({ conditionJson: '{}', pageNumber: page, pageSize: size }),
     });
-    if (!res || res.code !== 0 || !res.data || !res.data.list) return [];
-    return res.data.list.map(mapBook);
+    var data = await res.json().catch(function () { return null; });
+    if (!res.ok || !data || data.code !== 0 || !data.data) {
+      throw new Error('Boti Translation list ' + name + ' failed (HTTP ' + res.status +
+        (data && data.message ? ', ' + data.message : '') + ')');
+    }
+    return data.data;
+  }
+  var CACHE_MS = 10 * 60 * 1000, catalogue = {};
+  async function wholeList(name) {
+    var hit = catalogue[name];
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.list;
+    var first = await rankList(name, 1, 2000), list = first.list || [];
+    for (var pg = 2; list.length < (first.totalCount || 0) && pg <= 20; pg++) {
+      list = list.concat((await rankList(name, pg, 2000)).list || []);
+    }
+    catalogue[name] = { at: Date.now(), list: list };
+    return list;
+  }
+  Plugin.prototype.popularNovels = async function (page, options) {
+    var opts = options || {}, f = opts.filters || {};
+    var sort = opts.showLatestNovels ? 'LastUpdatedLocal' : ((f.sort && f.sort.value) || 'MostPopularLocal');
+    var genres = (f.genre && f.genre.value) || [];
+    var status = (f.status && f.status.value) || '';
+    if (!genres.length && !status) {
+      return ((await rankList(sort, page, PAGE_SIZE)).list || []).map(mapBook);
+    }
+    var hits = (await wholeList(sort)).filter(function (b) {
+      return (!genres.length || genres.indexOf(String(b.genre)) !== -1) && (!status || String(b.status) === status);
+    });
+    return hits.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(mapBook);
   };
 
   Plugin.prototype.parseNovel = async function (novelPath) {

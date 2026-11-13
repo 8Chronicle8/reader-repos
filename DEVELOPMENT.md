@@ -41,23 +41,29 @@ genesistudio, fenrirealm.
 SvelteKit over a JSON API (`api/new/v2/`). Browse filters that work:
 `sort=popular|latest|updated`, `statuses[]=<status>`, `genres[]=<numeric id>`
 (genre slugs are silently ignored; checked against the result totals).
-Chapters: `series/<slug>/chapters/<chapterSlug>` returns the chapter's `uuid`
-and, with a valid read token, the text AES-256-GCM encrypted and split into
-shuffled fragments (schemes `fragmented-v1`/`-v2`; key and order derived from
-the token, as the site's reader does). Read tokens:
-- the first one needs a captcha, which a person passes in WebView; the plugin
-  never attempts it and says so when it is needed;
-- a valid token (or the WebView session's `fr_read` cookie) can be exchanged at
-  `POST /api/read-token` for a fresh one a limited number of times
-  (`x-read-token-exchanges-remaining`); responses may also rotate the token
-  (`x-read-token-issued`);
-- the plugin stores the current token in plugin storage, captures rotated ones,
-  and exchanges a token in its last minute, so a session survives app restarts
-  until the exchange allowance runs out.
-`test/fenrir_crypto_test.js` proves the flow against a fake server and checks
-decryption against the official plugin's own `decryptWithToken`. Not proven
-here: the live site's behaviour after a real WebView check (that needs a
-person); verify on a device.
+Chapters: `series/<slug>/chapters/<chapterSlug>` (with
+`X-Accepts-Encrypted-Content: 3`) returns the chapter's `uuid`, and with a
+reading session the text AES-256-GCM encrypted, split into shuffled fragments
+(`fragmented-v1`/`-v2`), for a token bound to that one chapter (`cid` in the
+token payload). How the site's own reader works (read from its JS, 2026-11-13):
+- the reading session is a cookie the site sets when a person passes its check
+  (Turnstile or Cap); the page never sends a Cookie header itself;
+- `POST /api/read-token {chapter_id}` exchanges the session for a token for
+  that chapter, first without a captcha token; `exchanges_remaining` counts
+  down; when it refuses with `challenge_required` the person must check again;
+- a chapter response may carry the chapter's token in `x-read-token-issued`;
+  if the body cannot be decrypted, the reader mints for that chapter and
+  refetches;
+- the reader renews the session shortly before its token expires.
+The plugin does the same and never sets a Cookie header: LNReader shares the
+WebView's cookies with plugin requests, and an explicit header would replace
+the session the WebView created (the 1.1.0 plugin did exactly that, which is
+why it failed even after a WebView check). It never attempts the check.
+`test/fenrir_crypto_test.js` holds the flow to a fake server built from that
+reader code (session cookie the plugin cannot see; tokens per chapter; three
+ways of handing out the token) and checks decryption against the official
+plugin's `decryptWithToken`. Not provable from here: the live site after a
+real check. Errors end with a `[...]` diagnostic line for that case.
 
 Library paths stay `series/<slug>` and `series/<slug>/<chapterSlug>`; the
 official plugin's shapes (`<slug>`, `…~~<uuid>`) are accepted too.
@@ -90,6 +96,18 @@ Filters on `/series/?genre[]=&type[]=&status=&order=`. Their public chapter
 lists contain only readable chapters (checked: the newest listed chapters
 return full text), so no chapter is marked locked. Ad scripts inside chapter
 bodies are stripped.
+
+### botitranslation.com
+StoryWave backend (`api.mystorywave.com`, header `site-domain`). Browse uses
+the site's own ranking lists, `POST /content/books/custom/<List>` with
+`{conditionJson: "{}", pageNumber, pageSize}` (lists `MostPopularLocal`,
+`TranslationMostPopularLocal`, `MostWordCountLocal`, `LastUpdatedLocal`, as
+the home page sends them): this site's catalogue (1,971 books), paged on the
+server. `GET /content/books` is the whole StoryWave network (about 20,000) and
+is no longer used for browsing. The lists ignore genre and status, so with
+either filter set the plugin fetches the whole list of the chosen order once
+(about 5 MB, kept 10 minutes) and filters it; status 1 = ongoing, 2 = completed.
+The website itself is behind a Cloudflare challenge; the API is not.
 
 ### brightnovels.com
 Laravel + Inertia.js: page props are JSON in `<div id="app" data-page="...">`.

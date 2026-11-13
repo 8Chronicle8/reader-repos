@@ -7,7 +7,7 @@ exactly as the app expects, so the branch can be added in the app as it is.
 | Branch | Upstream | Add in the app |
 |---|---|---|
 | `mirror-lnreader` | [LNReader/lnreader-plugins](https://github.com/LNReader/lnreader-plugins) `plugins/v3.0.0` (+ `master` source in `source/`) | `https://raw.githubusercontent.com/8Chronicle8/reader-repos/mirror-lnreader/plugins/.dist/plugins.min.mirror.json` |
-| `mirror-anikku` | [mojuru/anime-repo](https://github.com/mojuru/anime-repo) `repo` (Yūzōnō) | `https://raw.githubusercontent.com/8Chronicle8/reader-repos/mirror-anikku` |
+| `mirror-anikku` | [mojuru/anime-repo](https://github.com/mojuru/anime-repo) `repo` (Yūzōnō) | `https://raw.githubusercontent.com/8Chronicle8/reader-repos/mirror-anikku/index.min.json` |
 | `mirror-mihon` | [keiyoushi/extensions](https://github.com/keiyoushi/extensions) `repo` + its release APKs | `https://raw.githubusercontent.com/8Chronicle8/reader-repos/mirror-mihon/index.mirror.pb` |
 
 The original manifests are kept byte for byte. LNReader and Mihon manifests

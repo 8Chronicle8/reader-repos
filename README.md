@@ -6,19 +6,19 @@ generate, test and back them up:
 | App | What is here | Add this URL in the app |
 |---|---|---|
 | [LNReader](https://github.com/LNReader/lnreader) | 13 novel-site plugins (`repo/`) | `https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/.dist/plugins.min.json` |
-| [Anikku](https://github.com/komikku-app/anikku) | patched anime extensions (`anikku/`) | `https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/anikku/patched` |
+| [Anikku](https://github.com/komikku-app/anikku) | patched anime extensions (`anikku/`) | `https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/anikku/patched/index.min.json` |
 | LNReader, Anikku, [Mihon](https://github.com/mihonapp/mihon) | mirrors of the official repositories | see [mirrors/README.md](mirrors/README.md) |
 
 - **LNReader:** Settings → Repositories → Add (the plugin names end in `-P`, so
   they sit next to the official plugins).
-- **Anikku:** Settings → Browse → Extension repos → Add (enter the base URL; the
-  app appends `index.min.json` itself).
+- **Anikku:** Settings → Browse → Extension repos → Add. Anikku only accepts a
+  URL ending in `/index.min.json`; it finds `apk/` and `icon/` next to it.
 
 ## LNReader plugins
 
 | Plugin | Site | Filters | Hide locked chapters |
 |---|---|---|---|
-| Boti Translation-P | botitranslation.com | – | yes |
+| Boti Translation-P | botitranslation.com | sort (popular, translations, words, updated), genre, status | yes |
 | Bright Novels-P | brightnovels.com | – | yes |
 | Doby Translations-P | dobytranslations.com | genre, type, status, order | – (paid chapters are not listed) |
 | Fenrir Realm-P | fenrirealm.com | sort, status, genres | yes |
@@ -38,10 +38,11 @@ serves to any visitor.
 
 Two sites need a one-time check in the app's WebView before they load:
 
-- **Fenrir Realm** asks for a captcha before it issues a reading session. Open
-  any chapter in WebView (globe icon), let it load, go back and reload. The
-  plugin then keeps the session alive by renewing its token before it expires,
-  across app restarts, until the site asks for a new check.
+- **Fenrir Realm** asks for a captcha before it starts a reading session. Open
+  a chapter in WebView (globe icon), wait until its text shows, go back and
+  reload. The plugin then renews the session before it expires, across app
+  restarts, until the site asks for a new check. If a chapter still fails, the
+  error ends with a short `[...]` line; that line says where it stopped.
 - **Novellunar** is behind a Cloudflare check; pass it once in WebView.
 
 Bright Novels can optionally route through a proxy you run

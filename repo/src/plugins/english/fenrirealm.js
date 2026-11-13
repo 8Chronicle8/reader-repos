@@ -34,14 +34,15 @@ var gcm = require('@libs/aes').gcm;
 //   novel   : GET api/new/v2/series/<slug>,  chapters: .../series/<slug>/chapters
 //   chapter : GET api/new/v2/series/<slug>/chapters/<chapterSlug>
 //
-// Reading a chapter needs a short-lived read token, sent as the fr_read
-// cookie. The site issues the first one after a captcha that a person solves
-// in the browser (here: "Open in WebView"). A valid token can then be
-// exchanged for a fresh one, a limited number of times, without another
-// captcha -- the site's own reader does this. The plugin keeps the current
-// token in its storage, captures each rotated token the API returns, and
-// exchanges it shortly before it expires, so one verification lasts until the
-// site's exchange allowance runs out. It never attempts the captcha itself.
+// Reading a chapter needs a reading session: a cookie the site sets once a
+// person passes its check (here: "Open in WebView"). With that session the
+// chapter comes back encrypted for a token bound to that one chapter, which
+// the site hands out from its mint endpoint and in x-read-token-issued. A
+// session can be exchanged for fresh tokens a limited number of times without
+// another check. The plugin follows the site's own reader: fetch, mint for
+// the chapter when it is locked, decrypt with that chapter's token, and renew
+// the session when its last token is about to expire. It never attempts the
+// check itself.
 var SITE = 'https://fenrirealm.com/';
 var API = SITE + 'api/new/v2/';
 var PER_PAGE = 24;
@@ -172,63 +173,62 @@ function decrypt(c, token) {
 }
 
 // ------------------------------------------------------------ read token
+// The reading session itself is a cookie the site sets when a person passes
+// its check in the WebView. LNReader shares the WebView's cookies with plugin
+// requests, so the plugin never sets a Cookie header: doing so would replace
+// the session the WebView created. The token returned by the mint endpoint
+// (and rotated in x-read-token-issued) is bound to one chapter and is only
+// used to derive that chapter's decryption key and to know when the session
+// needs renewing.
 function savedToken() {
   var t = storage.get(TOKEN_KEY);
-  return t && t.value && t.expiresAt > Date.now() ? t : null;
+  return t && t.value ? t : null;
 }
-function saveToken(value, expiresAtSec, remaining) {
+function saveToken(value, expiresAtSec, remaining, target) {
   if (!value) return null;
-  var exp = Number(expiresAtSec) > 0 ? Number(expiresAtSec) : Number(tokenPayload(value).exp);
+  var payload = tokenPayload(value);
+  var exp = Number(expiresAtSec) > 0 ? Number(expiresAtSec) : Number(payload.exp);
   var expiresAt = exp > 0 ? exp * 1000 : Date.now() + 5 * 60 * 1000;
-  var t = { value: value, expiresAt: expiresAt, remaining: remaining == null ? null : Number(remaining) };
-  storage.set(TOKEN_KEY, t, expiresAt);
+  var t = {
+    value: value, expiresAt: expiresAt, cid: Number(payload.cid) > 0 ? Number(payload.cid) : null,
+    target: target == null ? null : String(target), remaining: remaining == null ? null : Number(remaining),
+  };
+  // Kept a day past expiry: the chapter it was last renewed for is what the
+  // next renewal is sent with.
+  storage.set(TOKEN_KEY, t, expiresAt + 24 * 3600 * 1000);
   return t;
 }
-// Every API response may carry a rotated token; keep it.
-function captureIssued(res) {
+function captureIssued(res, target) {
   var h = res && res.headers;
   var issued = h && h.get && h.get('x-read-token-issued');
   if (!issued) return null;
-  return saveToken(issued, h.get('x-read-token-expires-at'), h.get('x-read-token-exchanges-remaining'));
+  return saveToken(issued, h.get('x-read-token-expires-at'), h.get('x-read-token-exchanges-remaining'), target);
 }
-function tokenHeaders(token, extra) {
-  var headers = Object.assign({ 'Accept': 'application/json' }, extra || {});
-  if (token) headers['Cookie'] = 'fr_read=' + token;
-  return headers;
-}
-// Trade the current token (or the WebView session's cookie) for a fresh one.
-// Returns the new token, or {challenge: true} when the site wants a captcha.
-async function exchange(chapterId) {
-  var current = savedToken();
+// Ask the site for a token for this chapter, exchanging the current session
+// (no captcha). Returns {token} or {refused: <why>}.
+async function mint(target, diag) {
   var res = await fetchApi(SITE + 'api/read-token', {
     method: 'POST',
-    headers: tokenHeaders(current && current.value, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify(chapterId ? { chapter_id: String(chapterId) } : {}),
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(target ? { chapter_id: String(target) } : {}),
   });
   if (res.status === 429) throw rateLimited();
   var data = await res.json().catch(function () { return {}; });
   if (res.ok && data && data.active && data.token) {
-    return saveToken(data.token, data.expires_at, res.headers.get('x-read-token-exchanges-remaining'));
+    diag.push('mint ok' + (data.exchanges_remaining != null ? ' (' + data.exchanges_remaining + ' left)' : ''));
+    return { token: saveToken(data.token, data.expires_at, data.exchanges_remaining, target) };
   }
-  storage.delete(TOKEN_KEY);
-  return { challenge: !!(data && data.challenge_required) || res.status === 403, status: res.status };
-}
-async function freshToken(chapterId) {
-  var t = savedToken();
-  if (t && t.expiresAt - Date.now() > RENEW_MARGIN_MS) return t;
-  if (t) {
-    var renewed = await exchange(chapterId);
-    if (renewed && renewed.value) return renewed;
-  }
-  return savedToken();
+  var why = data && data.challenge_required ? 'challenge' : (data && data.active === false ? 'inactive' : 'http ' + res.status);
+  diag.push('mint ' + why);
+  return { refused: why };
 }
 function rateLimited() {
   return new Error('Fenrir Realm is rate limiting reads (too many requests). Wait a minute, then reload the chapter.');
 }
-function verifyError() {
-  var e = new Error('Fenrir Realm needs a quick check before chapters can be read: open this chapter in WebView ' +
-    '(globe icon), let the page load the chapter, then go back and reload. The plugin keeps that session alive ' +
-    'from then on, until the site asks for a new check.');
+function verifyError(diag) {
+  var e = new Error('Fenrir Realm needs its check before this chapter can be read: open the chapter in WebView ' +
+    '(globe icon), wait until the chapter text shows, then go back and reload. After that the plugin renews the ' +
+    'session by itself until the site asks for a new check. [' + diag.join(', ') + ']');
   e.status = 403;
   return e;
 }
@@ -317,6 +317,11 @@ function formatContent(text) {
   });
   return ($('body').html() || s).replace(INVISIBLE, '').trim();
 }
+async function chapterUuid(slug, chapterSlug) {
+  var list = listOf(await json('series/' + slug + '/chapters'));
+  var hit = list.filter(function (c) { return String(c.slug) === String(chapterSlug); })[0];
+  return hit ? (hit.uuid || hit.id || null) : null;
+}
 async function json(path) {
   var r = await fetchApi(API + path, { headers: { 'Accept': 'application/json' } });
   if (!r.ok) throw new Error('Fenrir Realm returned HTTP ' + r.status + ' for ' + path);
@@ -333,7 +338,7 @@ var Plugin = /** @class */ (function () {
     this.id = 'fenrirealm';
     this.name = 'Fenrir Realm-P';
     this.site = SITE;
-    this.version = '1.1.0';
+    this.version = '1.1.1';
     this.icon = 'icons/fenrirealm.png';
     // Genre ids are the site's numeric ids (genres[]=<id>); slugs are ignored.
     this.filters = {
@@ -399,61 +404,70 @@ var Plugin = /** @class */ (function () {
   Plugin.prototype.parseChapter = async function (chapterPath) {
     var p = splitPath(chapterPath);
     var url = API + 'series/' + p.slug + '/chapters/' + p.chapter;
-    var load = async function (token) {
-      var res = await fetchApi(url, { headers: tokenHeaders(token, { 'X-Accepts-Encrypted-Content': '3' }) });
+    var diag = [];
+    var load = async function (label) {
+      var res = await fetchApi(url, { headers: { 'Accept': 'application/json', 'X-Accepts-Encrypted-Content': '3' } });
       if (res.status === 429) throw rateLimited();
-      var issued = captureIssued(res);
-      if (!res.ok) return { status: res.status };
-      return { status: res.status, data: await res.json(), sent: token, issued: issued && issued.value };
+      var data = res.ok ? await res.json() : null;
+      var issued = captureIssued(res, data && (data.uuid || data.id));
+      diag.push(label + ' ' + res.status + (data ? ' ' + data.content_format : '') + (issued ? ' +token' : ''));
+      return { status: res.status, data: data, issued: issued && issued.value };
+    };
+    var targetOf = function (c) {
+      return c && (c.remint_chapter_uuid || c.remint_chapter_id || c.uuid || c.id) || null;
     };
 
-    var token = await freshToken(null);
-    if (!token) {
-      // Nothing stored yet (first read after a WebView check, or after the
-      // stored token lapsed): trade the browser session for a token the plugin
-      // holds, so the encrypted body can be read. A refusal is not final here:
-      // the chapter request below decides whether a check is needed.
-      var first = await exchange(null);
-      if (first && first.value) token = first;
-    }
-    var got = await load(token && token.value);
-    var c = got.data;
-    if (!c) {
-      if (got.status === 404) throw new Error('This chapter no longer exists on Fenrir Realm.');
-      // 401/403: the token was refused; one exchange, then ask for a check.
-      var again = await exchange(null);
-      if (!again || !again.value) throw verifyError();
-      got = await load(again.value);
-      c = got.data;
-      if (!c) throw verifyError();
-    }
+    // Keep the session alive: a stored token in its last minute (or just
+    // past it) is renewed through an exchange before the read.
+    var saved = savedToken();
+    if (saved && saved.expiresAt - Date.now() < RENEW_MARGIN_MS) await mint(saved.target, diag);
 
-    if (c.content_format === 'locked') {
-      if (isLocked(c)) {
-        var price = (c.locked || {}).price;
+    var got = await load('chapter');
+    if (got.status === 404) throw new Error('This chapter no longer exists on Fenrir Realm.');
+    var minted = null;
+    if (!got.data || got.data.content_format === 'locked') {
+      var c0 = got.data;
+      if (c0 && isLocked(c0)) {
+        var price = (c0.locked || {}).price;
         throw new Error('This chapter is locked' + (price ? ' (' + price + ' runes)' : '') +
           '. Unlock it on fenrirealm.com to read it here.');
       }
-      var minted = await exchange(c.uuid || c.id);
-      if (!minted || !minted.value) throw verifyError();
-      got = await load(minted.value);
-      c = got.data;
-      if (!c || c.content_format === 'locked') throw verifyError();
+      var target = targetOf(c0) || await chapterUuid(p.slug, p.chapter);
+      var m = await mint(target, diag);
+      if (!m.token) throw verifyError(diag);
+      minted = m.token.value;
+      got = await load('retry');
+      if (!got.data || got.data.content_format === 'locked') throw verifyError(diag);
     }
 
+    var c = got.data;
     if (c.content_format === 'encrypted') {
-      // The body is encrypted for one of the tokens in play: the one sent, or
-      // the one this response rotated in. The GCM tag tells them apart.
-      var candidates = [got.issued, got.sent, (savedToken() || {}).value].filter(Boolean);
-      for (var i = 0; i < candidates.length; i++) {
-        var plain = decrypt(c, candidates[i]);
-        if (plain !== null) return formatContent(plain);
+      var tryAll = function (tokens) {
+        for (var i = 0; i < tokens.length; i++) {
+          var plain = tokens[i] ? decrypt(c, tokens[i]) : null;
+          if (plain !== null) return plain;
+        }
+        return null;
+      };
+      var cid = chapterCid(c), held = savedToken();
+      var plain = tryAll([got.issued, minted, held && (held.cid === null || held.cid === cid) ? held.value : null]);
+      if (plain === null) {
+        // As the site's reader does: a token for exactly this chapter, then refetch.
+        var m2 = await mint(targetOf(c), diag);
+        if (!m2.token) throw verifyError(diag);
+        got = await load('refetch');
+        c = got.data || c;
+        plain = c.content_format === 'encrypted' ? tryAll([got.issued, m2.token.value]) : null;
+        if (plain === null && c.content_format !== 'encrypted' && typeof c.content === 'string' && c.content) plain = c.content;
       }
-      throw new Error('Fenrir Realm sent this chapter encrypted for a session the plugin does not hold. ' +
-        'Open it in WebView once, then reload.');
+      if (plain === null) {
+        throw new Error('Fenrir Realm sent this chapter encrypted and the plugin could not read it. Please report ' +
+          'this line: [' + diag.join(', ') + ', scheme ' + c.content_scheme + ', cid ' + cid + ']');
+      }
+      return formatContent(plain);
     }
     if (typeof c.content === 'string' && c.content) return formatContent(c.content);
-    throw new Error('Fenrir Realm returned this chapter without any text (format: ' + c.content_format + ').');
+    throw new Error('Fenrir Realm returned this chapter without any text. [' + diag.join(', ') + ']');
   };
 
   Plugin.prototype.resolveUrl = function (path, isNovel) {

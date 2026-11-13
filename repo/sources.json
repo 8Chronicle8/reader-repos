@@ -28,7 +28,7 @@
       "id": "botitranslation",
       "name": "Boti Translation-P",
       "site": "https://www.botitranslation.com/",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "lang": "English",
       "engine": "bespoke-storywave"
     },
@@ -100,7 +100,7 @@
       "id": "fenrirealm",
       "name": "Fenrir Realm-P",
       "site": "https://fenrirealm.com/",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "lang": "English",
       "engine": "bespoke-sveltekit-api"
     }

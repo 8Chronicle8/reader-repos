@@ -73,46 +73,63 @@ function encryptChapter(text, token, scheme, cid) {
   return shuffle(b64, 7, frag);
 }
 
-// ---- fake fenrirealm.com
-function makeToken(n, expSec) {
-  return Buffer.from(JSON.stringify({ vid: 'visitor-' + n, exp: expSec })).toString('base64url') + '.sig' + n;
+// ---- fake fenrirealm.com, modelled on the site's reader code
+// The session is an opaque cookie in the app's jar (set when a person passes
+// the check in WebView); the plugin cannot read it and must never send its
+// own Cookie header. Tokens are bound to one chapter (cid in the payload).
+// mode A: a chapter stays locked until a token is minted for it
+// mode B: a chapter comes back encrypted with x-read-token-issued
+// mode C: a chapter comes back encrypted without the header
+function makeToken(n, cid, expSec) {
+  return Buffer.from(JSON.stringify({ vid: 'visitor-1', cid, exp: expSec })).toString('base64url') + '.sig' + n;
 }
+const CID = { '1': 4241, '2': 4242, '3': 4243, '4': 4244, '9': 4249, paid: 4250 };
 function fakeSite(opts) {
-  const s = { jarCookie: opts.jarCookie || null, exchangesLeft: opts.exchanges, valid: new Set(), minted: 0, requests: [],
-    ttl: opts.ttl || 300, scheme: opts.scheme || 'fragmented-v2', text: opts.text };
-  if (s.jarCookie) s.valid.add(s.jarCookie);
+  const now = () => Math.floor(Date.now() / 1000);
+  const s = { mode: opts.mode || 'A', scheme: opts.scheme || 'fragmented-v2', text: opts.text, minted: 0,
+    jar: null, sessions: new Map(), chapterTokens: new Map(), requests: [] };
+  s.verifyInWebView = (exchanges, ttl) => {
+    const id = 'sess-' + Math.random().toString(36).slice(2);
+    s.sessions.set(id, { expires: now() + (ttl || 300), left: exchanges }); s.jar = id; return id;
+  };
+  const session = () => { const x = s.jar && s.sessions.get(s.jar); return x && x.expires > now() ? x : null; };
   const respond = (status, body, headers) => ({
     ok: status >= 200 && status < 300, status,
     headers: { get: k => (headers || {})[k.toLowerCase()] || null },
-    json: async () => body, text: async () => JSON.stringify(body),
+    json: async () => body,
   });
-  const mint = () => {
-    s.minted++;
-    const t = makeToken(s.minted, Math.floor(Date.now() / 1000) + s.ttl);
-    s.valid.add(t); return t;
-  };
+  const tokenFor = (cid) => { s.minted++; const t = makeToken(s.minted, cid, now() + 300); s.chapterTokens.set(cid, t); return t; };
   s.fetch = async (url, o) => {
     o = o || {};
-    // The app's HTTP client attaches the WebView session cookie itself.
-    let cookie = (o.headers && o.headers.Cookie) || (s.jarCookie ? 'fr_read=' + s.jarCookie : '');
-    const tok = (cookie.match(/fr_read=([^;]+)/) || [])[1];
+    if (o.headers && Object.keys(o.headers).some(k => k.toLowerCase() === 'cookie')) {
+      throw new Error('plugin sent its own Cookie header; that would replace the WebView session');
+    }
     s.requests.push((o.method || 'GET') + ' ' + url.replace('https://fenrirealm.com/', ''));
     if (url.endsWith('/api/read-token')) {
-      if (!tok || !s.valid.has(tok) || s.exchangesLeft <= 0) {
-        return respond(403, { error: 'A captcha challenge is required to mint a read token.', challenge_required: true });
-      }
-      s.exchangesLeft--; s.valid.delete(tok);
-      const t = mint();
-      return respond(200, { active: true, token: t, expires_at: Math.floor(Date.now() / 1000) + s.ttl },
-        { 'x-read-token-exchanges-remaining': String(s.exchangesLeft) });
+      const body = JSON.parse(o.body || '{}'); const sess = session();
+      if (!sess || sess.left <= 0) return respond(403, { error: 'A captcha challenge is required to mint a read token.', challenge_required: true });
+      if (!body.chapter_id) return respond(422, { error: 'chapter_id required' });
+      const cid = CID[String(body.chapter_id).replace('uuid-', '')];
+      sess.left--; sess.expires = now() + 300;   // an exchange renews the session
+      const t = tokenFor(cid);
+      return respond(200, { active: true, token: t, expires_at: now() + 300, exchanges_remaining: sess.left });
     }
-    const m = url.match(/series\/([^/]+)\/chapters\/([^/?]+)$/);
+    let m = url.match(/series\/([^/]+)\/chapters$/);
+    if (m) return respond(200, Object.keys(CID).map(k => ({ slug: k, uuid: 'uuid-' + k, number: 1 })));
+    m = url.match(/series\/([^/]+)\/chapters\/([^/?]+)$/);
     if (m) {
-      const paid = m[2] === 'paid';
-      const base = { uuid: 'uuid-' + m[2], slug: m[2], content_cid: 4242, locked: paid ? { price: 5, unlocked_at: null } : { price: 0 } };
-      if (paid || !tok || !s.valid.has(tok)) return respond(200, Object.assign(base, { content: '', content_format: 'locked' }));
-      return respond(200, Object.assign(base, { content_format: 'encrypted', content_scheme: s.scheme,
-        content: encryptChapter(s.text, tok, s.scheme, 4242) }));
+      const slug = m[2], cid = CID[slug], paid = slug === 'paid';
+      const base = { uuid: 'uuid-' + slug, slug, content_cid: cid, locked: paid ? { price: 5, unlocked_at: null } : { price: 0 } };
+      const locked = () => respond(200, Object.assign({}, base, { content: '', content_format: 'locked' }));
+      if (paid || !session()) return locked();
+      let token = s.chapterTokens.get(cid), headers = {};
+      if (!token) {
+        if (s.mode === 'A') return locked();
+        token = tokenFor(cid);
+        if (s.mode === 'B') headers['x-read-token-issued'] = token;
+      }
+      return respond(200, Object.assign({}, base, { content_format: 'encrypted', content_scheme: s.scheme,
+        content: encryptChapter(s.text, token, s.scheme, cid) }), headers);
     }
     throw new Error('fake site: unexpected request ' + url);
   };
@@ -123,66 +140,66 @@ const TEXT = '<p>Chapter one — the quiet before the storm.</p><p aria-hidden="
 const WANT = '<p>Chapter one — the quiet before the storm.</p><p>Ünïcode ✓ text.</p>';
 
 async function main() {
-  // 1. SHA-256 against node:crypto, every length across two block boundaries
-  //    plus multibyte input. Reached through the decrypt path, so a wrong
-  //    digest shows up as a failed decryption in the flows below as well.
+  // 1. Decryption round trips over lengths that straddle SHA-256 block
+  //    boundaries, with multibyte text (a wrong digest fails decryption).
   for (const len of [0, 1, 55, 56, 63, 64, 65, 119, 120, 128, 1000]) {
-    const site = fakeSite({ jarCookie: 'x', exchanges: 1, text: 'é'.repeat(len) + 'end' });
-    site.valid.clear(); site.jarCookie = makeToken(0, Math.floor(Date.now() / 1000) + 300); site.valid.add(site.jarCookie);
+    const site = fakeSite({ mode: 'B', text: 'é'.repeat(len) + 'end' }); site.verifyInWebView(5);
     const out = await load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1');
     assert.strictEqual(cheerio.load(out).text(), 'é'.repeat(len) + 'end', 'decrypted text, length ' + len);
   }
   console.log('ok  decryption round-trips for 11 lengths (exercises SHA-256 padding)');
 
-  // 2. No session at all: the plugin must ask for the WebView check, not guess.
+  // 2. No session: ask for the WebView check, with a diagnostic line.
   {
-    const site = fakeSite({ exchanges: 5, text: TEXT });
-    await assert.rejects(load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'), /WebView/);
-    console.log('ok  no session -> asks for the WebView check');
+    const site = fakeSite({ mode: 'A', text: TEXT });
+    await assert.rejects(load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'), /WebView.*\[chapter 200 locked, mint challenge\]/);
+    console.log('ok  no session -> asks for the WebView check, says why');
   }
-  // 3. A WebView-verified session (cookie in the shared jar): exchanged for a
-  //    token the plugin holds, chapter decrypted, token persisted.
-  const storage = new Storage();
+  // 3-5. After the WebView check, every way the site may hand out the token.
+  for (const mode of ['A', 'B', 'C']) {
+    const site = fakeSite({ mode, text: TEXT }); site.verifyInWebView(5);
+    assert.strictEqual(await load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'), WANT, 'mode ' + mode);
+    const mints = site.requests.filter(r => r.startsWith('POST')).length;
+    assert.ok(mode === 'B' ? mints === 0 : mints === 1, `mode ${mode}: ${mints} mint(s)`);
+  }
+  console.log('ok  WebView session -> chapter read when locked-until-mint, issued in a header, or encrypted without one');
+
+  // 6. Renewal: a stored token in its last minute is exchanged first, which
+  //    renews the session; then a session past its life is still readable
+  //    only because it was renewed.
   {
-    const site = fakeSite({ jarCookie: makeToken(0, Math.floor(Date.now() / 1000) + 300), exchanges: 5, text: TEXT });
+    const storage = new Storage();
+    const site = fakeSite({ mode: 'A', text: TEXT }); const sid = site.verifyInWebView(5, 120);
     const plugin = load(PLUGIN, site.fetch, storage);
     assert.strictEqual(await plugin.parseChapter('series/novel/1'), WANT);
-    assert.ok(storage.get('readToken') && storage.get('readToken').value, 'token persisted');
-    // A new plugin instance (app restart) reuses the stored token: no new mint.
-    site.jarCookie = null;
-    const before = site.minted;
+    const t = storage.get('readToken'); assert.ok(t && t.target === 'uuid-1', 'token stored with its chapter');
+    storage.set('readToken', Object.assign({}, t, { expiresAt: Date.now() + 20 * 1000 }));
+    site.sessions.get(sid).expires = Math.floor(Date.now() / 1000) + 20;
+    const before = site.requests.length;
     assert.strictEqual(await load(PLUGIN, site.fetch, storage).parseChapter('series/novel/2'), WANT);
-    assert.strictEqual(site.minted, before, 'restart reused the persisted token');
-    console.log('ok  WebView session -> token exchanged, chapter decrypted, token survives a restart');
+    assert.ok(site.requests[before].startsWith('POST'), 'renewed before reading');
+    assert.ok(site.sessions.get(sid).expires > Math.floor(Date.now() / 1000) + 200, 'session extended');
+    console.log('ok  token near expiry -> session renewed by an exchange before the read, across a restart');
 
-    // 4. Close to expiry: renewed by exchange *before* the read.
-    const t = storage.get('readToken');
-    storage.set('readToken', Object.assign({}, t, { expiresAt: Date.now() + 20 * 1000 }), Date.now() + 20 * 1000);
-    assert.strictEqual(await plugin.parseChapter('series/novel/3'), WANT);
-    assert.ok(site.minted > before && storage.get('readToken').value !== t.value, 'token renewed');
-    console.log('ok  token near expiry -> renewed through an exchange, read succeeds');
-
-    // 5. Exchange allowance used up and token expired: back to the check.
-    site.exchangesLeft = 0;
-    const cur = storage.get('readToken');
-    storage.set('readToken', Object.assign({}, cur, { expiresAt: Date.now() + 1000 }), Date.now() + 1000);
-    await assert.rejects(plugin.parseChapter('series/novel/4'), /WebView/);
+    // 7. Allowance used up and session over: back to the check.
+    site.sessions.get(sid).left = 0; site.sessions.get(sid).expires = 0;
+    await assert.rejects(plugin.parseChapter('series/novel/3'), /WebView/);
     console.log('ok  exchanges exhausted -> asks for the WebView check');
   }
-  // 6. Paid chapter: refused with the price, never "unlocked".
+  // 8. Paid chapter: refused with the price, never "unlocked".
   {
-    const site = fakeSite({ jarCookie: makeToken(0, Math.floor(Date.now() / 1000) + 300), exchanges: 5, text: TEXT });
+    const site = fakeSite({ mode: 'B', text: TEXT }); site.verifyInWebView(5);
     await assert.rejects(load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/paid'), /locked \(5 runes\)/);
     console.log('ok  paid chapter -> refused');
   }
-  // 7. v1 scheme and official-shaped paths ('<slug>/<chapter>~~<uuid>').
+  // 9. v1 scheme and official-shaped paths ('<slug>/<chapter>~~<uuid>').
   {
-    const site = fakeSite({ jarCookie: makeToken(0, Math.floor(Date.now() / 1000) + 300), exchanges: 5, text: TEXT, scheme: 'fragmented-v1' });
+    const site = fakeSite({ mode: 'A', text: TEXT, scheme: 'fragmented-v1' }); site.verifyInWebView(5);
     assert.strictEqual(await load(PLUGIN, site.fetch, new Storage()).parseChapter('novel/9~~uuid-9'), WANT);
     console.log('ok  fragmented-v1 and official-shaped paths');
   }
 
-  // 8. Parity with the official plugin's own decryption.
+// 10. Parity with the official plugin's own decryption.
   const official = process.argv[2];
   if (!official) {
     console.log('SKIP parity: pass the official compiled fenrirrealm.js to run it');
@@ -191,7 +208,7 @@ async function main() {
   }
   const off = load(official, async () => { throw new Error('no network'); }, new Storage());
   for (const scheme of ['fragmented-v1', 'fragmented-v2']) {
-    const token = makeToken(7, Math.floor(Date.now() / 1000) + 300);
+    const token = makeToken(7, 4242, Math.floor(Date.now() / 1000) + 300);
     const chapter = { content_cid: 4242, content_scheme: scheme, content: encryptChapter(TEXT, token, scheme, 4242) };
     assert.strictEqual(off.decryptWithToken(chapter, token), TEXT, 'official decrypts the reference ' + scheme);
   }

@@ -7,11 +7,12 @@ the official extension as a `-P` variant, so nothing has to be uninstalled.
 
 ## Add it in Anikku
 
-**Settings → Browse → Extension repos → Add**, and enter the base URL (Anikku
-appends `/index.min.json`, `/apk/…` and `/icon/…` itself):
+**Settings → Browse → Extension repos → Add**, and enter the full URL of the
+index. Anikku only accepts a URL ending in `/index.min.json` and finds `apk/`
+and `icon/` next to it:
 
 ```
-https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/anikku/patched
+https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/anikku/patched/index.min.json
 ```
 
 Every APK is checked against the signing fingerprint in `patched/repo.json`:

@@ -1,5 +1,26 @@
 # Changes
 
+## 2026-11-13 (later) — Fenrir session, Boti filters, Anikku URL
+
+- **Fenrir Realm 1.1.1:** 1.1.0 failed even after a WebView check: it sent its
+  own `Cookie: fr_read=<token>` header, replacing the session cookie the
+  WebView had created, and its first exchange left out `chapter_id`. Rewritten
+  to follow the site's own reader code: no Cookie header (the app's cookie jar
+  carries the session), mint per chapter, decrypt with that chapter's token,
+  mint and refetch when a body cannot be decrypted, renew before expiry.
+  Errors now end with a diagnostic line. The offline test was rebuilt on the
+  site's real model; it fails on 1.1.0 with the reported symptom and passes on
+  1.1.1. Live reading is still unproven from here (needs a person's check).
+- **Boti Translation 1.1.1:** sort (most popular, popular translations, most
+  words, recently updated) from the site's own ranking lists, plus genre and
+  status filters. Browse now lists this site's catalogue; before, it listed the
+  whole StoryWave network. Each sort and filter checked live against the API's
+  own genre and status for every result.
+- **Anikku URL:** Anikku only accepts a repository URL ending in
+  `/index.min.json` (`CreateExtensionRepo`, `^https://.*/index\.min\.json$`).
+  The docs said to enter the base URL, which Anikku rejects; corrected for the
+  patched repo and `mirror-anikku`.
+
 ## 2026-11-13 — rebase on the latest official repositories
 
 ### LNReader plugins (all now 1.1.0)
