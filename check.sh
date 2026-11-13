@@ -38,6 +38,9 @@ for i, p in st.items():
     assert man[i]['version'] == p['version'], i
     src = open('repo/' + man[i]['url'].split('/main/repo/', 1)[1]).read()
     assert \"this.version = '%s'\" % p['version'] in src, i + ': plugin file version differs from manifest'
+    if 'iconUrl' in man[i]:
+        import os
+        assert os.path.isfile('repo/' + man[i]['iconUrl'].split('/main/repo/', 1)[1]), i + ': iconUrl points at a missing file'
 "
 
 OFFICIAL_FENRIR="$MIRROR_DATA/lnreader/plugins/.js/src/plugins/english/fenrirrealm.js"

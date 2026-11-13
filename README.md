@@ -56,7 +56,7 @@ python3 lnrepo.py add <url> --name "Name"       # generate a plugin for a new si
 python3 lnrepo.py filters <id>                  # read a LightNovelWP site's filter form
 python3 lnrepo.py regen <id>                    # re-emit a template plugin
 python3 tools/private_common.py sync            # shared plugin code (hide locked chapters)
-python3 lnrepo.py build --github 8Chronicle8/reader-repos --branch main --subdir repo
+python3 lnrepo.py build --github 8Chronicle8/reader-repos --branch main --subdir repo --no-icons
 ./check.sh --live                               # every check, one verdict
 ```
 

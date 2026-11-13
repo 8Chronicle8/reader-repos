@@ -5,8 +5,7 @@
     "site": "https://thesuniscold.translatednovels.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/thesuniscold.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/thesuniscold.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/thesuniscold.js"
   },
   {
     "id": "dobytranslations",
@@ -14,8 +13,7 @@
     "site": "https://dobytranslations.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/dobytranslations.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/dobytranslations.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/dobytranslations.js"
   },
   {
     "id": "penguinsquad",
@@ -23,8 +21,7 @@
     "site": "https://penguin-squad.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/penguinsquad.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/penguinsquad.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/penguinsquad.js"
   },
   {
     "id": "botitranslation",
@@ -32,8 +29,7 @@
     "site": "https://www.botitranslation.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/botitranslation.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/botitranslation.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/botitranslation.js"
   },
   {
     "id": "noicetranslations",
@@ -41,8 +37,7 @@
     "site": "https://noicetranslations.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/noicetranslations.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/noicetranslations.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/noicetranslations.js"
   },
   {
     "id": "primodialtranslation",
@@ -50,8 +45,7 @@
     "site": "https://primodialtranslation.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/primodialtranslation.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/primodialtranslation.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/primodialtranslation.js"
   },
   {
     "id": "taptotale",
@@ -59,8 +53,7 @@
     "site": "https://taptotale.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/taptotale.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/taptotale.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/taptotale.js"
   },
   {
     "id": "novellunar",
@@ -68,8 +61,7 @@
     "site": "https://novellunar.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/novellunar.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/novellunar.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/novellunar.js"
   },
   {
     "id": "noveldex",
@@ -77,8 +69,7 @@
     "site": "https://noveldex.io/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/noveldex.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/noveldex.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/noveldex.js"
   },
   {
     "id": "brightnovels",
@@ -86,8 +77,7 @@
     "site": "https://brightnovels.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/brightnovels.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/brightnovels.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/brightnovels.js"
   },
   {
     "id": "wuxiaworldsite",
@@ -95,8 +85,7 @@
     "site": "https://wuxiaworld.site/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/wuxiaworldsite.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/wuxiaworldsite.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/wuxiaworldsite.js"
   },
   {
     "id": "genesistudio",
@@ -104,8 +93,7 @@
     "site": "https://genesistudio.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/genesistudio.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/genesistudio.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/genesistudio.js"
   },
   {
     "id": "fenrirealm",
@@ -113,7 +101,6 @@
     "site": "https://fenrirealm.com/",
     "lang": "English",
     "version": "1.1.0",
-    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/fenrirealm.js",
-    "iconUrl": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/icons/fenrirealm.png"
+    "url": "https://raw.githubusercontent.com/8Chronicle8/reader-repos/main/repo/src/plugins/english/fenrirealm.js"
   }
 ]
