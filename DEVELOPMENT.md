@@ -81,7 +81,10 @@ this plugin used (`series/<s>/chapters/<c>`), the site reader's
 (`series/<s>/[<volume>/]<number>[.<part>]`) and the official plugin's
 (`chapters/<uuid>`); without a session they answer alike, so which honours a
 session cannot be seen from outside. 1.1.4 tries them in that order and logs
-each. Passing the site's bot detection by disguising the app as a browser is
+each. 1.1.5 asks for the token before any chapter request, as the official
+plugin does (in all device tests a token request made after a locked chapter
+answer was refused); chapter ids come from the list stored when the novel is
+opened. Passing the site's bot detection by disguising the app as a browser is
 not done.
 
 Library paths stay `series/<slug>` and `series/<slug>/<chapterSlug>`; the

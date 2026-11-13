@@ -239,10 +239,11 @@ function rateLimited() {
 async function cookieSeen(pageUrl) {
   try {
     var r = await fetchApi(pageUrl, { credentials: 'include', headers: { 'Accept': 'text/html' } });
-    var m = (await r.text()).match(/hasReadCookie:(true|false|!0|!1)/);
-    return m ? (m[1] === 'true' || m[1] === '!0' ? 'session cookie seen' : 'session cookie not seen') : 'session cookie unknown';
+    var m = (await r.text()).match(/"?hasReadCookie"?\s*:\s*(true|false|!0|!1)/);
+    if (!m) return 'session cookie unknown (page HTTP ' + r.status + ')';
+    return m[1] === 'true' || m[1] === '!0' ? 'session cookie seen' : 'session cookie not seen';
   } catch (e) {
-    return 'session cookie unknown';
+    return 'session cookie unknown (page not loaded)';
   }
 }
 function verifyError(diag) {
@@ -337,10 +338,18 @@ function formatContent(text) {
   });
   return ($('body').html() || s).replace(INVISIBLE, '').trim();
 }
+// Chapter ids, remembered per novel when its chapter list is read, so a
+// chapter's id is known without asking for the chapter itself first.
+function rememberIds(slug, list) {
+  var ids = {};
+  list.forEach(function (c) { if (c && c.slug != null && (c.uuid || c.id)) ids[String(c.slug)] = c.uuid || c.id; });
+  storage.set('ids:' + slug, ids, Date.now() + 7 * 24 * 3600 * 1000);
+  return ids;
+}
 async function chapterUuid(slug, chapterSlug) {
-  var list = listOf(await json('series/' + slug + '/chapters'));
-  var hit = list.filter(function (c) { return String(c.slug) === String(chapterSlug); })[0];
-  return hit ? (hit.uuid || hit.id || null) : null;
+  var ids = storage.get('ids:' + slug);
+  if (!ids || !ids[String(chapterSlug)]) ids = rememberIds(slug, listOf(await json('series/' + slug + '/chapters')));
+  return ids[String(chapterSlug)] || null;
 }
 async function json(path) {
   var r = await fetchApi(API + path, { headers: { 'Accept': 'application/json' } });
@@ -358,7 +367,7 @@ var Plugin = /** @class */ (function () {
     this.id = 'fenrirealm';
     this.name = 'Fenrir Realm-P';
     this.site = SITE;
-    this.version = '1.1.4';
+    this.version = '1.1.5';
     this.icon = 'icons/fenrirealm.png';
     // Genre ids are the site's numeric ids (genres[]=<id>); slugs are ignored.
     this.filters = {
@@ -398,7 +407,9 @@ var Plugin = /** @class */ (function () {
     var slug = splitPath(novelPath).slug;
     var res = await json('series/' + slug);
     var s = (res && res.data) || res || {};
-    var chapters = listOf(await json('series/' + slug + '/chapters'))
+    var list = listOf(await json('series/' + slug + '/chapters'));
+    rememberIds(slug, list);
+    var chapters = list
       .filter(function (c) { return c && c.slug != null; })
       .map(function (c) {
         return {
@@ -448,21 +459,22 @@ var Plugin = /** @class */ (function () {
       return c && (c.remint_chapter_uuid || c.remint_chapter_id || c.uuid || c.id) || null;
     };
 
-    // Keep the session alive: a stored token in its last minute (or just
-    // past it) is renewed through an exchange before the read.
-    var saved = savedToken();
-    if (saved && saved.expiresAt - Date.now() < RENEW_MARGIN_MS) await mint(saved.target, diag, pageUrl);
-
-    // The chapter can be asked for at three addresses: the one this plugin
-    // has always used (it also resolves the chapter's id, number and volume),
-    // the one the site's own reader uses (series/<slug>/[<volume>/]<number>
-    // [.<part>]), and the one the official plugin uses (chapters/<uuid>).
-    // Without a session all three answer alike; which of them honours a
-    // session is not observable from outside, so a locked answer is retried
-    // at the reader's address and then by id, each step in the diagnostic.
-    var got = await load('lookup', API + 'series/' + p.slug + '/chapters/' + p.chapter);
-    if (got.status === 404) throw new Error('This chapter no longer exists on Fenrir Realm.');
+    // The official plugin's order, the one seen to work on devices: first a
+    // token for this chapter, exchanged from the WebView's session; then the
+    // chapter by id. (Asking for the chapter first and the token only after a
+    // locked answer never got a token in device tests.) The token is renewed
+    // the same way when the stored one is missing or in its last minute.
+    var uuid = await chapterUuid(p.slug, p.chapter);
     var minted = null;
+    var saved = savedToken();
+    if (!saved || saved.expiresAt - Date.now() < RENEW_MARGIN_MS) {
+      var first = await mint(uuid, diag, pageUrl);
+      if (first.token) minted = first.token.value;
+    }
+    var byId = uuid ? API + 'chapters/' + uuid : null;
+    var lookup = API + 'series/' + p.slug + '/chapters/' + p.chapter;
+    var got = await load(byId ? 'by id' : 'lookup', byId || lookup);
+    if (got.status === 404) throw new Error('This chapter no longer exists on Fenrir Realm.');
     if (!readable(got)) {
       var c0 = got.data;
       if (c0 && isLocked(c0)) {
@@ -470,20 +482,19 @@ var Plugin = /** @class */ (function () {
         throw new Error('This chapter is locked' + (price ? ' (' + price + ' runes)' : '') +
           '. Unlock it on fenrirealm.com to read it here.');
       }
-      var target = targetOf(c0) || await chapterUuid(p.slug, p.chapter);
+      // The other two addresses of the chapter (the site reader's and the
+      // old one), after one more token request if the first did not succeed.
+      if (!minted) {
+        var again = await mint(targetOf(c0) || uuid, diag, pageUrl);
+        if (again.token) minted = again.token.value;
+        if (minted && byId) got = await load('by id', byId);
+      }
       var readerUrl = c0 && c0.number != null
         ? API + 'series/' + p.slug + '/' + (c0.group && c0.group.slug ? c0.group.slug + '/' : '') +
           c0.number + (c0.part ? '.' + c0.part : '')
         : null;
-      var idUrl = c0 && c0.uuid ? API + 'chapters/' + c0.uuid : null;
-      if (readerUrl) got = await load('reader', readerUrl);
-      if (!readable(got)) {
-        var m = await mint(target, diag, pageUrl);
-        if (m.token) minted = m.token.value;
-        if (readerUrl) got = await load('reader', readerUrl);
-        if (!readable(got) && idUrl) got = await load('by id', idUrl);
-        if (!readable(got)) got = await load('lookup', API + 'series/' + p.slug + '/chapters/' + p.chapter);
-      }
+      if (!readable(got) && readerUrl) got = await load('reader', readerUrl);
+      if (!readable(got) && byId) got = await load('lookup', lookup);
       if (!readable(got)) throw await fail();
     }
 

@@ -88,6 +88,9 @@ function fakeSite(opts) {
   const now = () => Math.floor(Date.now() / 1000);
   const s = { mode: opts.mode || 'A', scheme: opts.scheme || 'fragmented-v2', text: opts.text, minted: 0,
     honours: opts.honours || ['lookup', 'reader', 'id'],
+    // strict: once a locked chapter has been served for a session, the site
+    // no longer exchanges it (the hypothesis behind 1.1.5's token-first order)
+    strict: !!opts.strict, spoiled: new Set(),
     jar: null, sessions: new Map(), chapterTokens: new Map(), requests: [] };
   s.verifyInWebView = (exchanges, ttl) => {
     const id = 'sess-' + Math.random().toString(36).slice(2);
@@ -111,7 +114,7 @@ function fakeSite(opts) {
     if (url.endsWith('/api/read-token')) {
       const body = JSON.parse(o.body || '{}'); const sess = session();
       const sameOrigin = o.headers && o.headers.Origin === 'https://fenrirealm.com';
-      if (!sess || sess.left <= 0 || !sameOrigin) return respond(403, { error: 'A captcha challenge is required to mint a read token.', challenge_required: true });
+      if (!sess || sess.left <= 0 || !sameOrigin || (s.strict && s.spoiled.has(s.jar))) return respond(403, { error: 'A captcha challenge is required to mint a read token.', challenge_required: true });
       if (!body.chapter_id) return respond(422, { error: 'chapter_id required' });
       const cid = CID[String(body.chapter_id).replace('uuid-', '')];
       sess.left--; sess.expires = now() + 300;   // an exchange renews the session
@@ -133,7 +136,7 @@ function fakeSite(opts) {
     if (form) {
       const cid = CID[slug], paid = slug === 'paid';
       const base = { uuid: 'uuid-' + slug, slug, number: slug, content_cid: cid, locked: paid ? { price: 5, unlocked_at: null } : { price: 0 } };
-      const locked = () => respond(200, Object.assign({}, base, { content: '', content_format: 'locked' }));
+      const locked = () => { if (session()) s.spoiled.add(s.jar); return respond(200, Object.assign({}, base, { content: '', content_format: 'locked' })); };
       if (paid || !session() || !s.honours.includes(form)) return locked();
       let token = s.chapterTokens.get(cid), headers = {};
       if (!token) {
@@ -166,7 +169,7 @@ async function main() {
   {
     const site = fakeSite({ mode: 'A', text: TEXT });
     await assert.rejects(load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'),
-      /needs its check.*\[lookup HTTP 200 locked; reader HTTP 200 locked; token request HTTP 403 challenge;.*by id HTTP 200 locked; lookup HTTP 200 locked; session cookie not seen\]/);
+      /needs its check.*\[token request HTTP 403 challenge; by id HTTP 200 locked; token request HTTP 403 challenge; reader HTTP 200 locked; lookup HTTP 200 locked; session cookie not seen\]/);
     console.log('ok  no session -> asks for the WebView check, and says the cookie did not arrive');
     // A session cookie that arrives but is refused is told apart from a missing one.
     const refused = fakeSite({ mode: 'A', text: TEXT }); refused.verifyInWebView(0);
@@ -179,7 +182,8 @@ async function main() {
     const site = fakeSite({ mode, text: TEXT }); site.verifyInWebView(5);
     assert.strictEqual(await load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'), WANT, 'mode ' + mode);
     const mints = site.requests.filter(r => r.startsWith('POST')).length;
-    assert.ok(mode === 'B' ? mints === 0 : mints === 1, `mode ${mode}: ${mints} mint(s)`);
+    // Token first (the official plugin's order): one token request whatever the mode.
+    assert.strictEqual(mints, 1, `mode ${mode}: ${mints} mint(s)`);
   }
   console.log('ok  WebView session -> chapter read when locked-until-mint, issued in a header, or encrypted without one');
 
@@ -189,6 +193,14 @@ async function main() {
     assert.strictEqual(await load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'), WANT, 'only ' + honours);
   }
   console.log('ok  read through whichever address honours the session: reader form, by id, or lookup');
+
+  // A site that stops exchanging a session once a locked chapter was served
+  // for it: asking for the token first still reads.
+  {
+    const site = fakeSite({ mode: 'A', text: TEXT, strict: true }); site.verifyInWebView(5);
+    assert.strictEqual(await load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'), WANT);
+    console.log('ok  token requested before the chapter: reads even where a locked read spoils the session');
+  }
 
   // 6. Renewal: a stored token in its last minute is exchanged first, which
   //    renews the session; then a session past its life is still readable

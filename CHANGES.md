@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-11-14 — Fenrir 1.1.5: token first, in the official plugin's order
+
+1.1.4 on the owner's phone (signed in): every address locked, token request
+refused, `session cookie unknown`. In every device test the token request was
+refused only after the plugin had already asked for the chapter; the official
+plugin, which reads some of the time, asks for the token first. 1.1.5 does the
+same: token for the chapter (exchanged from the WebView session), then the
+chapter by id, then the other two addresses. Chapter ids are remembered when a
+novel is opened, so no chapter request precedes the token request. The cookie
+probe accepts the page's minified and JSON forms and reports the page status.
+A signed-in Bearer path was examined and not added: the site's reader sends
+the sign-in through cookies, which the plugin already carries.
+
 ## 2026-11-13 (late) — Fenrir 1.1.4: the site reader's address, a correction
 
 1.1.3 concluded the site serves chapters only to the browser that passed its
