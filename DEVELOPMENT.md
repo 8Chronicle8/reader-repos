@@ -74,10 +74,15 @@ in WebView, the plugin's requests carried the session cookie (the server's
 `hasReadCookie` was true) and the site still answered the chapter as locked and
 refused the token exchange. The site sets a visitor cookie `fr_vid` and binds
 reading to IP + visitor; its check also rejects automated browsers ("Blocked by
-instrumentation: automated_browser_detected"). It serves chapters only to the
-browser that passed the check. Making the app's HTTP client pass as that
-browser would be evading the site's bot detection, which this project does not
-do; the plugin reports the case and points to WebView reading.
+instrumentation: automated_browser_detected"). That first reading ("only the browser that
+passed the check is served") was too strong: the official plugin reads some of
+the time. One difference was found: a chapter has three addresses, the one
+this plugin used (`series/<s>/chapters/<c>`), the site reader's
+(`series/<s>/[<volume>/]<number>[.<part>]`) and the official plugin's
+(`chapters/<uuid>`); without a session they answer alike, so which honours a
+session cannot be seen from outside. 1.1.4 tries them in that order and logs
+each. Passing the site's bot detection by disguising the app as a browser is
+not done.
 
 Library paths stay `series/<slug>` and `series/<slug>/<chapterSlug>`; the
 official plugin's shapes (`<slug>`, `…~~<uuid>`) are accepted too.

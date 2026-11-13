@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-11-13 (late) — Fenrir 1.1.4: the site reader's address, a correction
+
+1.1.3 concluded the site serves chapters only to the browser that passed its
+check. The owner reports the official plugin reads some of the time, so that
+was wrong as stated, and the README no longer says it. A difference was found
+instead: this plugin asked for chapters at an address neither the site's reader
+nor the official plugin uses. 1.1.4 resolves the chapter at the old address,
+then reads it at the site reader's address (`series/<s>/<number>`), renews the
+token, and retries the reader's address, the official plugin's
+(`chapters/<uuid>`) and the old one, each step in the diagnostic. The offline
+test serves the session at only one of the three addresses at a time and the
+plugin reads the chapter in each case; 1.1.3 fails it.
+
 ## 2026-11-13 (night) — Fenrir 1.1.3: the site refuses in-app reading
 
 The 1.1.2 device report was `[chapter 200 locked, mint 403 challenge, cookie

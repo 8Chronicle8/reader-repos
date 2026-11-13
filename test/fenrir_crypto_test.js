@@ -87,6 +87,7 @@ const CID = { '1': 4241, '2': 4242, '3': 4243, '4': 4244, '9': 4249, paid: 4250 
 function fakeSite(opts) {
   const now = () => Math.floor(Date.now() / 1000);
   const s = { mode: opts.mode || 'A', scheme: opts.scheme || 'fragmented-v2', text: opts.text, minted: 0,
+    honours: opts.honours || ['lookup', 'reader', 'id'],
     jar: null, sessions: new Map(), chapterTokens: new Map(), requests: [] };
   s.verifyInWebView = (exchanges, ttl) => {
     const id = 'sess-' + Math.random().toString(36).slice(2);
@@ -122,12 +123,18 @@ function fakeSite(opts) {
       text: async () => '<script>data:{token:void 0,readerPosition:null,hasReadCookie:' + (session() ? 'true' : 'false') + '}</script>' };
     m = url.match(/series\/([^/]+)\/chapters$/);
     if (m) return respond(200, Object.keys(CID).map(k => ({ slug: k, uuid: 'uuid-' + k, number: 1 })));
-    m = url.match(/series\/([^/]+)\/chapters\/([^/?]+)$/);
-    if (m) {
-      const slug = m[2], cid = CID[slug], paid = slug === 'paid';
-      const base = { uuid: 'uuid-' + slug, slug, content_cid: cid, locked: paid ? { price: 5, unlocked_at: null } : { price: 0 } };
+    // The three addresses of a chapter: lookup series/<s>/chapters/<c>,
+    // reader series/<s>/<number>, id chapters/<uuid>. Only the forms listed in
+    // `honours` serve a session; the others answer as if there were none.
+    let form = null, slug = null;
+    if ((m = url.match(/v2\/series\/([^/]+)\/chapters\/([^/?]+)$/))) { form = 'lookup'; slug = m[2]; }
+    else if ((m = url.match(/v2\/chapters\/uuid-([^/?]+)$/))) { form = 'id'; slug = m[1]; }
+    else if ((m = url.match(/v2\/series\/([^/]+)\/([^/?]+)$/))) { form = 'reader'; slug = m[2]; }
+    if (form) {
+      const cid = CID[slug], paid = slug === 'paid';
+      const base = { uuid: 'uuid-' + slug, slug, number: slug, content_cid: cid, locked: paid ? { price: 5, unlocked_at: null } : { price: 0 } };
       const locked = () => respond(200, Object.assign({}, base, { content: '', content_format: 'locked' }));
-      if (paid || !session()) return locked();
+      if (paid || !session() || !s.honours.includes(form)) return locked();
       let token = s.chapterTokens.get(cid), headers = {};
       if (!token) {
         if (s.mode === 'A') return locked();
@@ -159,12 +166,12 @@ async function main() {
   {
     const site = fakeSite({ mode: 'A', text: TEXT });
     await assert.rejects(load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'),
-      /needs its check.*\[chapter request HTTP 200 locked; token request HTTP 403 challenge; session cookie not seen\]/);
+      /needs its check.*\[lookup HTTP 200 locked; reader HTTP 200 locked; token request HTTP 403 challenge;.*by id HTTP 200 locked; lookup HTTP 200 locked; session cookie not seen\]/);
     console.log('ok  no session -> asks for the WebView check, and says the cookie did not arrive');
     // A session cookie that arrives but is refused is told apart from a missing one.
     const refused = fakeSite({ mode: 'A', text: TEXT }); refused.verifyInWebView(0);
     await assert.rejects(load(PLUGIN, refused.fetch, new Storage()).parseChapter('series/novel/1'),
-      /refused this app's connection even though your WebView check passed.*Read this chapter in WebView.*session cookie seen\]/);
+      /refused this connection although your WebView session reached it.*session cookie seen\]/);
     console.log('ok  session present but refused -> says to read in WebView, diagnostic "session cookie seen"');
   }
   // 3-5. After the WebView check, every way the site may hand out the token.
@@ -175,6 +182,13 @@ async function main() {
     assert.ok(mode === 'B' ? mints === 0 : mints === 1, `mode ${mode}: ${mints} mint(s)`);
   }
   console.log('ok  WebView session -> chapter read when locked-until-mint, issued in a header, or encrypted without one');
+
+  // Whichever address honours the session, the chapter is read.
+  for (const honours of [['reader'], ['id'], ['lookup']]) {
+    const site = fakeSite({ mode: 'A', text: TEXT, honours }); site.verifyInWebView(5);
+    assert.strictEqual(await load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'), WANT, 'only ' + honours);
+  }
+  console.log('ok  read through whichever address honours the session: reader form, by id, or lookup');
 
   // 6. Renewal: a stored token in its last minute is exchanged first, which
   //    renews the session; then a session past its life is still readable

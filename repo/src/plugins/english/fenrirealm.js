@@ -358,7 +358,7 @@ var Plugin = /** @class */ (function () {
     this.id = 'fenrirealm';
     this.name = 'Fenrir Realm-P';
     this.site = SITE;
-    this.version = '1.1.3';
+    this.version = '1.1.4';
     this.icon = 'icons/fenrirealm.png';
     // Genre ids are the site's numeric ids (genres[]=<id>); slugs are ignored.
     this.filters = {
@@ -423,29 +423,27 @@ var Plugin = /** @class */ (function () {
 
   Plugin.prototype.parseChapter = async function (chapterPath) {
     var p = splitPath(chapterPath);
-    var url = API + 'series/' + p.slug + '/chapters/' + p.chapter;
     var pageUrl = SITE + 'series/' + p.slug + '/' + p.chapter;
     var diag = [];
     var fail = async function () {
       var seen = await cookieSeen(pageUrl);
       diag.push(seen);
       if (seen !== 'session cookie seen') return verifyError(diag);
-      // The WebView's session reached the site and was still refused: the site
-      // ties a reading session to the browser that passed its check (2026-11).
-      var e = new Error('Fenrir Realm refused this app\'s connection even though your WebView check passed: the ' +
-        'site only serves chapters to the browser that passed its check. Read this chapter in WebView (globe icon). [' +
-        diag.join('; ') + ']');
+      var e = new Error('Fenrir Realm refused this connection although your WebView session reached it. Read this ' +
+        'chapter in WebView (globe icon), or try again in a while. [' + diag.join('; ') + ']');
       e.status = 403;
       return e;
     };
-    var load = async function (label) {
+    // One chapter request; `label` names the address form in the diagnostic.
+    var load = async function (label, url) {
       var res = await fetchApi(url, { credentials: 'include', headers: siteHeaders(pageUrl, { 'X-Accepts-Encrypted-Content': '3' }) });
       if (res.status === 429) throw rateLimited();
       var data = res.ok ? await res.json() : null;
       var issued = captureIssued(res, data && (data.uuid || data.id));
-      diag.push(label + ' request HTTP ' + res.status + (data ? ' ' + data.content_format : '') + (issued ? ' +token' : ''));
+      diag.push(label + ' HTTP ' + res.status + (data ? ' ' + data.content_format : '') + (issued ? ' +token' : ''));
       return { status: res.status, data: data, issued: issued && issued.value };
     };
+    var readable = function (g) { return g && g.data && g.data.content_format !== 'locked'; };
     var targetOf = function (c) {
       return c && (c.remint_chapter_uuid || c.remint_chapter_id || c.uuid || c.id) || null;
     };
@@ -455,10 +453,17 @@ var Plugin = /** @class */ (function () {
     var saved = savedToken();
     if (saved && saved.expiresAt - Date.now() < RENEW_MARGIN_MS) await mint(saved.target, diag, pageUrl);
 
-    var got = await load('chapter');
+    // The chapter can be asked for at three addresses: the one this plugin
+    // has always used (it also resolves the chapter's id, number and volume),
+    // the one the site's own reader uses (series/<slug>/[<volume>/]<number>
+    // [.<part>]), and the one the official plugin uses (chapters/<uuid>).
+    // Without a session all three answer alike; which of them honours a
+    // session is not observable from outside, so a locked answer is retried
+    // at the reader's address and then by id, each step in the diagnostic.
+    var got = await load('lookup', API + 'series/' + p.slug + '/chapters/' + p.chapter);
     if (got.status === 404) throw new Error('This chapter no longer exists on Fenrir Realm.');
     var minted = null;
-    if (!got.data || got.data.content_format === 'locked') {
+    if (!readable(got)) {
       var c0 = got.data;
       if (c0 && isLocked(c0)) {
         var price = (c0.locked || {}).price;
@@ -466,11 +471,20 @@ var Plugin = /** @class */ (function () {
           '. Unlock it on fenrirealm.com to read it here.');
       }
       var target = targetOf(c0) || await chapterUuid(p.slug, p.chapter);
-      var m = await mint(target, diag, pageUrl);
-      if (!m.token) throw await fail();
-      minted = m.token.value;
-      got = await load('retry');
-      if (!got.data || got.data.content_format === 'locked') throw await fail();
+      var readerUrl = c0 && c0.number != null
+        ? API + 'series/' + p.slug + '/' + (c0.group && c0.group.slug ? c0.group.slug + '/' : '') +
+          c0.number + (c0.part ? '.' + c0.part : '')
+        : null;
+      var idUrl = c0 && c0.uuid ? API + 'chapters/' + c0.uuid : null;
+      if (readerUrl) got = await load('reader', readerUrl);
+      if (!readable(got)) {
+        var m = await mint(target, diag, pageUrl);
+        if (m.token) minted = m.token.value;
+        if (readerUrl) got = await load('reader', readerUrl);
+        if (!readable(got) && idUrl) got = await load('by id', idUrl);
+        if (!readable(got)) got = await load('lookup', API + 'series/' + p.slug + '/chapters/' + p.chapter);
+      }
+      if (!readable(got)) throw await fail();
     }
 
     var c = got.data;
@@ -488,19 +502,19 @@ var Plugin = /** @class */ (function () {
         // As the site's reader does: a token for exactly this chapter, then refetch.
         var m2 = await mint(targetOf(c), diag, pageUrl);
         if (!m2.token) throw await fail();
-        got = await load('refetch');
+        got = await load('refetch', API + 'chapters/' + (c.uuid || targetOf(c)));
         c = got.data || c;
         plain = c.content_format === 'encrypted' ? tryAll([got.issued, m2.token.value]) : null;
         if (plain === null && c.content_format !== 'encrypted' && typeof c.content === 'string' && c.content) plain = c.content;
       }
       if (plain === null) {
         throw new Error('Fenrir Realm sent this chapter encrypted and the plugin could not read it. Please report ' +
-          'this line: [' + diag.join(', ') + ', scheme ' + c.content_scheme + ', cid ' + cid + ']');
+          'this line: [' + diag.join('; ') + '; scheme ' + c.content_scheme + '; cid ' + cid + ']');
       }
       return formatContent(plain);
     }
     if (typeof c.content === 'string' && c.content) return formatContent(c.content);
-    throw new Error('Fenrir Realm returned this chapter without any text. [' + diag.join(', ') + ']');
+    throw new Error('Fenrir Realm returned this chapter without any text. [' + diag.join('; ') + ']');
   };
 
   Plugin.prototype.resolveUrl = function (path, isNovel) {
