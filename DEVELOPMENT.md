@@ -63,7 +63,11 @@ why it failed even after a WebView check). It never attempts the check.
 reader code (session cookie the plugin cannot see; tokens per chapter; three
 ways of handing out the token) and checks decryption against the official
 plugin's `decryptWithToken`. Not provable from here: the live site after a
-real check. Errors end with a `[...]` diagnostic line for that case.
+real check. Errors end with a `[...]` diagnostic line for that case:
+each request's status, the mint result, and whether the server saw the
+reading cookie (`hasReadCookie` in the server-rendered chapter page). The
+check is Cap (proof of work, served from fenrirealm.com/cap/); the plugin does
+not solve it.
 
 Library paths stay `series/<slug>` and `series/<slug>/<chapterSlug>`; the
 official plugin's shapes (`<slug>`, `…~~<uuid>`) are accepted too.

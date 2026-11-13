@@ -100,7 +100,7 @@
       "id": "fenrirealm",
       "name": "Fenrir Realm-P",
       "site": "https://fenrirealm.com/",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "lang": "English",
       "engine": "bespoke-sveltekit-api"
     }

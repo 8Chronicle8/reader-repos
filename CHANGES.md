@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-11-13 (evening) — Fenrir 1.1.2: same-origin requests, cookie diagnostic
+
+A device test of 1.1.1 reported `[chapter 200 locked, mint challenge]`: after
+a WebView check the site still saw no reading session. 1.1.2:
+- sends every request with `credentials: 'include'`, so the app's HTTP client
+  attaches the WebView cookie jar explicitly rather than by default;
+- sends `Origin`, `Referer` and `Sec-Fetch-Site: same-origin` like the site's
+  own reader (a cookie-backed POST without them is commonly refused);
+- on failure, fetches the chapter page, whose server-rendered data says
+  `hasReadCookie`, and reports `cookie seen` / `cookie not seen`, so the next
+  report tells a missing cookie from a refused one.
+The offline test now requires both; 1.1.1 fails it with the reported line.
+
 ## 2026-11-13 (latest) — sort and filters for the remaining plugins (1.1.1)
 
 Each option was taken from what the site itself accepts and checked live:

@@ -206,24 +206,44 @@ function captureIssued(res, target) {
 }
 // Ask the site for a token for this chapter, exchanging the current session
 // (no captcha). Returns {token} or {refused: <why>}.
-async function mint(target, diag) {
+// Requests are made the way the site's own reader makes them: same-origin,
+// with the browser session's cookies. credentials 'include' makes the app's
+// HTTP client attach the WebView cookie jar whatever its default.
+function siteHeaders(referer, extra) {
+  return Object.assign({ 'Accept': 'application/json', 'Origin': SITE.replace(/\/$/, ''),
+    'Referer': referer || SITE, 'Sec-Fetch-Site': 'same-origin' }, extra || {});
+}
+async function mint(target, diag, referer) {
   var res = await fetchApi(SITE + 'api/read-token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    credentials: 'include',
+    headers: siteHeaders(referer, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(target ? { chapter_id: String(target) } : {}),
   });
   if (res.status === 429) throw rateLimited();
   var data = await res.json().catch(function () { return {}; });
   if (res.ok && data && data.active && data.token) {
-    diag.push('mint ok' + (data.exchanges_remaining != null ? ' (' + data.exchanges_remaining + ' left)' : ''));
+    diag.push('mint ' + res.status + ' ok' + (data.exchanges_remaining != null ? ' (' + data.exchanges_remaining + ' left)' : ''));
     return { token: saveToken(data.token, data.expires_at, data.exchanges_remaining, target) };
   }
-  var why = data && data.challenge_required ? 'challenge' : (data && data.active === false ? 'inactive' : 'http ' + res.status);
-  diag.push('mint ' + why);
+  var why = data && data.challenge_required ? 'challenge' : (data && data.active === false ? 'inactive' : 'refused');
+  diag.push('mint ' + res.status + ' ' + why);
   return { refused: why };
 }
 function rateLimited() {
   return new Error('Fenrir Realm is rate limiting reads (too many requests). Wait a minute, then reload the chapter.');
+}
+// The chapter page the server renders carries hasReadCookie: whether this
+// request arrived with the site's reading-session cookie. Used only to make a
+// failure say which side is missing.
+async function cookieSeen(pageUrl) {
+  try {
+    var r = await fetchApi(pageUrl, { credentials: 'include', headers: { 'Accept': 'text/html' } });
+    var m = (await r.text()).match(/hasReadCookie:(true|false|!0|!1)/);
+    return m ? (m[1] === 'true' || m[1] === '!0' ? 'cookie seen' : 'cookie not seen') : 'cookie unknown';
+  } catch (e) {
+    return 'cookie unknown';
+  }
 }
 function verifyError(diag) {
   var e = new Error('Fenrir Realm needs its check before this chapter can be read: open the chapter in WebView ' +
@@ -338,7 +358,7 @@ var Plugin = /** @class */ (function () {
     this.id = 'fenrirealm';
     this.name = 'Fenrir Realm-P';
     this.site = SITE;
-    this.version = '1.1.1';
+    this.version = '1.1.2';
     this.icon = 'icons/fenrirealm.png';
     // Genre ids are the site's numeric ids (genres[]=<id>); slugs are ignored.
     this.filters = {
@@ -404,9 +424,14 @@ var Plugin = /** @class */ (function () {
   Plugin.prototype.parseChapter = async function (chapterPath) {
     var p = splitPath(chapterPath);
     var url = API + 'series/' + p.slug + '/chapters/' + p.chapter;
+    var pageUrl = SITE + 'series/' + p.slug + '/' + p.chapter;
     var diag = [];
+    var fail = async function () {
+      diag.push(await cookieSeen(pageUrl));
+      return verifyError(diag);
+    };
     var load = async function (label) {
-      var res = await fetchApi(url, { headers: { 'Accept': 'application/json', 'X-Accepts-Encrypted-Content': '3' } });
+      var res = await fetchApi(url, { credentials: 'include', headers: siteHeaders(pageUrl, { 'X-Accepts-Encrypted-Content': '3' }) });
       if (res.status === 429) throw rateLimited();
       var data = res.ok ? await res.json() : null;
       var issued = captureIssued(res, data && (data.uuid || data.id));
@@ -420,7 +445,7 @@ var Plugin = /** @class */ (function () {
     // Keep the session alive: a stored token in its last minute (or just
     // past it) is renewed through an exchange before the read.
     var saved = savedToken();
-    if (saved && saved.expiresAt - Date.now() < RENEW_MARGIN_MS) await mint(saved.target, diag);
+    if (saved && saved.expiresAt - Date.now() < RENEW_MARGIN_MS) await mint(saved.target, diag, pageUrl);
 
     var got = await load('chapter');
     if (got.status === 404) throw new Error('This chapter no longer exists on Fenrir Realm.');
@@ -433,11 +458,11 @@ var Plugin = /** @class */ (function () {
           '. Unlock it on fenrirealm.com to read it here.');
       }
       var target = targetOf(c0) || await chapterUuid(p.slug, p.chapter);
-      var m = await mint(target, diag);
-      if (!m.token) throw verifyError(diag);
+      var m = await mint(target, diag, pageUrl);
+      if (!m.token) throw await fail();
       minted = m.token.value;
       got = await load('retry');
-      if (!got.data || got.data.content_format === 'locked') throw verifyError(diag);
+      if (!got.data || got.data.content_format === 'locked') throw await fail();
     }
 
     var c = got.data;
@@ -453,8 +478,8 @@ var Plugin = /** @class */ (function () {
       var plain = tryAll([got.issued, minted, held && (held.cid === null || held.cid === cid) ? held.value : null]);
       if (plain === null) {
         // As the site's reader does: a token for exactly this chapter, then refetch.
-        var m2 = await mint(targetOf(c), diag);
-        if (!m2.token) throw verifyError(diag);
+        var m2 = await mint(targetOf(c), diag, pageUrl);
+        if (!m2.token) throw await fail();
         got = await load('refetch');
         c = got.data || c;
         plain = c.content_format === 'encrypted' ? tryAll([got.issued, m2.token.value]) : null;

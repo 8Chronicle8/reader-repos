@@ -92,7 +92,8 @@ function fakeSite(opts) {
     const id = 'sess-' + Math.random().toString(36).slice(2);
     s.sessions.set(id, { expires: now() + (ttl || 300), left: exchanges }); s.jar = id; return id;
   };
-  const session = () => { const x = s.jar && s.sessions.get(s.jar); return x && x.expires > now() ? x : null; };
+  let req = null; // the request being served: cookies travel only with credentials 'include'
+  const session = () => { const x = req.credentials === 'include' && s.jar && s.sessions.get(s.jar); return x && x.expires > now() ? x : null; };
   const respond = (status, body, headers) => ({
     ok: status >= 200 && status < 300, status,
     headers: { get: k => (headers || {})[k.toLowerCase()] || null },
@@ -104,17 +105,22 @@ function fakeSite(opts) {
     if (o.headers && Object.keys(o.headers).some(k => k.toLowerCase() === 'cookie')) {
       throw new Error('plugin sent its own Cookie header; that would replace the WebView session');
     }
+    req = o;
     s.requests.push((o.method || 'GET') + ' ' + url.replace('https://fenrirealm.com/', ''));
     if (url.endsWith('/api/read-token')) {
       const body = JSON.parse(o.body || '{}'); const sess = session();
-      if (!sess || sess.left <= 0) return respond(403, { error: 'A captcha challenge is required to mint a read token.', challenge_required: true });
+      const sameOrigin = o.headers && o.headers.Origin === 'https://fenrirealm.com';
+      if (!sess || sess.left <= 0 || !sameOrigin) return respond(403, { error: 'A captcha challenge is required to mint a read token.', challenge_required: true });
       if (!body.chapter_id) return respond(422, { error: 'chapter_id required' });
       const cid = CID[String(body.chapter_id).replace('uuid-', '')];
       sess.left--; sess.expires = now() + 300;   // an exchange renews the session
       const t = tokenFor(cid);
       return respond(200, { active: true, token: t, expires_at: now() + 300, exchanges_remaining: sess.left });
     }
-    let m = url.match(/series\/([^/]+)\/chapters$/);
+    let m = url.match(/^https:\/\/fenrirealm\.com\/series\/[^/]+\/[^/]+$/);
+    if (m) return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({}),
+      text: async () => '<script>data:{token:void 0,readerPosition:null,hasReadCookie:' + (session() ? 'true' : 'false') + '}</script>' };
+    m = url.match(/series\/([^/]+)\/chapters$/);
     if (m) return respond(200, Object.keys(CID).map(k => ({ slug: k, uuid: 'uuid-' + k, number: 1 })));
     m = url.match(/series\/([^/]+)\/chapters\/([^/?]+)$/);
     if (m) {
@@ -152,8 +158,13 @@ async function main() {
   // 2. No session: ask for the WebView check, with a diagnostic line.
   {
     const site = fakeSite({ mode: 'A', text: TEXT });
-    await assert.rejects(load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'), /WebView.*\[chapter 200 locked, mint challenge\]/);
-    console.log('ok  no session -> asks for the WebView check, says why');
+    await assert.rejects(load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'),
+      /WebView.*\[chapter 200 locked, mint 403 challenge, cookie not seen\]/);
+    console.log('ok  no session -> asks for the WebView check, and says the cookie did not arrive');
+    // A session cookie that arrives but is refused is told apart from a missing one.
+    const refused = fakeSite({ mode: 'A', text: TEXT }); refused.verifyInWebView(0);
+    await assert.rejects(load(PLUGIN, refused.fetch, new Storage()).parseChapter('series/novel/1'), /mint 403 challenge, cookie seen\]/);
+    console.log('ok  session present but refused -> the diagnostic says "cookie seen"');
   }
   // 3-5. After the WebView check, every way the site may hand out the token.
   for (const mode of ['A', 'B', 'C']) {
