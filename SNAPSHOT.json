@@ -1,0 +1,25 @@
+{
+  "name": "lnreader",
+  "fetched": "2026-11-13T10:51:16+00:00",
+  "upstream": [
+    {
+      "repo": "LNReader/lnreader-plugins",
+      "branch": "plugins/v3.0.0",
+      "commit": "1e116f19e55223881e6cf2c0ff5736b7a49556f4",
+      "committed": "2026-11-13T03:04:34Z",
+      "path": "plugins"
+    },
+    {
+      "repo": "LNReader/lnreader-plugins",
+      "branch": "master",
+      "commit": "91830c93bab534d074ada29291a76a1fa53c4b46",
+      "committed": "2026-11-13T03:04:54Z",
+      "path": "source"
+    }
+  ],
+  "tool_sha256": "071f887c145a4d95755da05a101f1e65e1d928e8f292c243c2d1747928f3580b",
+  "excluded": [
+    "agent instruction files: source/AGENTS.md"
+  ],
+  "failures": []
+}

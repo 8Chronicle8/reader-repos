@@ -1,0 +1,20 @@
+[
+  {
+    "id": "rulate-api",
+    "sourceSite": "https://tl.rulate.ru",
+    "sourceName": "Rulate",
+    "versionIncrements": 1
+  },
+  {
+    "id": "erolate-api",
+    "sourceSite": "https://erolate.org",
+    "sourceName": "Erolate",
+    "versionIncrements": 1
+  },
+  {
+    "id": "bllate-api",
+    "sourceSite": "https://bllate.org",
+    "sourceName": "Bllate",
+    "versionIncrements": 1
+  }
+]

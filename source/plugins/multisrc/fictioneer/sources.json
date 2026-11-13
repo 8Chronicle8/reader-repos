@@ -1,0 +1,89 @@
+[
+  {
+    "id": "daoistquest",
+    "sourceSite": "https://daoist.quest",
+    "sourceName": "Daoist Quest",
+    "options": {
+      "browsePage": "collection/novels",
+      "versionIncrements": 1
+    }
+  },
+  {
+    "id": "peachpuff",
+    "sourceSite": "https://peachpuff.in",
+    "sourceName": "Peach Puff Translations",
+    "options": {
+      "browsePage": "stories",
+      "trimTrailingSlash": true,
+      "selectors": {
+        "novelAuthor": "p.wp-block-paragraph a[href*='author']"
+      }
+    }
+  },
+  {
+    "id": "novelib",
+    "sourceSite": "https://novelib.com",
+    "sourceName": "NovelLib",
+    "options": {
+      "browsePage": "browse"
+    }
+  },
+  {
+    "id": "lilyonthevalley",
+    "sourceSite": "https://lilyonthevalley.com",
+    "sourceName": "Lily on the Valley",
+    "options": {
+      "customJs": {
+        "chapterTransform": "custom/lillyonthevalley/chapterTransform.js"
+      },
+      "versionIncrements": 1,
+      "browsePage": "stories"
+    }
+  },
+  {
+    "id": "penguinsquad",
+    "sourceSite": "https://penguin-squad.com",
+    "sourceName": "Penguin Squad",
+    "options": {
+      "browsePage": "novels"
+    }
+  },
+  {
+    "id": "prizmatranslation",
+    "sourceSite": "https://prizmatranslation.com",
+    "sourceName": "Prizma",
+    "options": {
+      "browsePage": "home/all-novels"
+    }
+  },
+  {
+    "id": "dearestrosalie",
+    "sourceSite": "https://dearestrosalie.com",
+    "sourceName": "Dearest Rosalie",
+    "options": {
+      "browsePage": "stories",
+      "down": true,
+      "downSince": 1768289212907
+    }
+  },
+  {
+    "id": "illusia",
+    "sourceSite": "https://illusia.com.br",
+    "sourceName": "Illusia",
+    "options": {
+      "browsePage": "historias",
+      "lang": "Portuguese",
+      "trimTrailingSlash": true,
+      "selectors": {
+        "browseCard": "#list-of-stories > li.illusia-card",
+        "searchCard": "#search-result-list > li.illusia-card",
+        "cardTitle": "h2.illusia-card__title > a",
+        "cardCover": "img.illusia-card__cover-img",
+        "novelTitle": "h1.illusia-single-story__title",
+        "novelAuthor": "span.illusia-single-story__credits-primary a.author",
+        "novelCover": "img.illusia-single-story__cover-img",
+        "novelSummary": "div.illusia-single-story__description"
+      }
+    }
+  }
+]
