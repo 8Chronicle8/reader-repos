@@ -1,0 +1,19 @@
+{
+  "name": "mihon",
+  "fetched": "2026-11-13T10:19:29+00:00",
+  "upstream": [
+    {
+      "repo": "keiyoushi/extensions",
+      "branch": "repo",
+      "commit": "5bf72bba33d15eed48a494e43482152614ea1853",
+      "committed": "2026-11-13T06:19:43Z",
+      "path": "."
+    }
+  ],
+  "tool_sha256": "50e73074e66f65560d0db30249bd6759c882252a0fad7944b365a42d8b325cf6",
+  "extensions": 1603,
+  "excluded": [
+    "*.jar release assets: Mihon reads only apkUrl and iconUrl"
+  ],
+  "failures": []
+}
