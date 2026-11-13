@@ -1,0 +1,243 @@
+diff --git a/lib/m3u8server/src/aniyomi/lib/m3u8server/AutoDetector.kt b/lib/m3u8server/src/aniyomi/lib/m3u8server/AutoDetector.kt
+index 3528e8b..6fc29d1 100644
+--- a/lib/m3u8server/src/aniyomi/lib/m3u8server/AutoDetector.kt
++++ b/lib/m3u8server/src/aniyomi/lib/m3u8server/AutoDetector.kt
+@@ -126,6 +126,92 @@ object AutoDetector {
+         return mergeRegions(regions)
+     }
+ 
++    // Consecutive 188-byte strides that must carry the sync byte before an
++    // offset is trusted as a real packet boundary during resync.
++    private const val SYNC_RUN = 3
++
++    private fun isSyncRun(data: ByteArray, offset: Int, runs: Int = SYNC_RUN): Boolean {
++        for (k in 0 until runs) {
++            val p = offset + k * MPEG_TS_PACKET_SIZE
++            // Near the tail a shorter run is all that's available; accept it.
++            if (p >= data.size) return k >= 2
++            if (data[p] != MPEG_TS_SYNC) return false
++        }
++        return true
++    }
++
++    /**
++     * True if the entire buffer is already a pristine MPEG-TS packet grid:
++     * the length is an exact multiple of 188 and every stride begins with the
++     * sync byte.
++     *
++     * Such a buffer **cannot** contain an injected junk block — inserting one
++     * would necessarily break both invariants. Any image-magic match inside it
++     * is therefore a coincidence, and acting on it destroys real video.
++     *
++     * This is not hypothetical. A measured 1811944-byte segment (exactly
++     * 9638 packets, starting `47 40 00 10`, i.e. a clean PAT) contained one
++     * spurious 33-byte "junk block"; excising it left 5008 of 9637 packets
++     * misaligned and the audio unparseable. Most segments from these CDNs are
++     * not obfuscated at all, so this guard is the common path, not an edge
++     * case.
++     */
++    fun isPristineMpegTs(data: ByteArray): Boolean {
++        if (data.isEmpty() || data.size % MPEG_TS_PACKET_SIZE != 0) return false
++        var i = 0
++        while (i < data.size) {
++            if (data[i] != MPEG_TS_SYNC) return false
++            i += MPEG_TS_PACKET_SIZE
++        }
++        return true
++    }
++
++    /**
++     * True if a solid MPEG-TS packet grid exists in the first 64 KB. Used to
++     * gate [resyncMpegTs] so non-TS payloads (fMP4 segments, keys, anything
++     * else) are never touched by it.
++     */
++    fun looksLikeMpegTs(data: ByteArray): Boolean {
++        val limit = minOf(data.size, 64 * 1024)
++        for (offset in 0 until limit) {
++            if (data[offset] == MPEG_TS_SYNC && isSyncRun(data, offset, 5)) return true
++        }
++        return false
++    }
++
++    /**
++     * Re-emit only bytes that form a valid 188-byte MPEG-TS packet grid.
++     *
++     * [detectInterleavedSkips] is a heuristic: it keys off image magic bytes
++     * and, when it cannot find a format boundary, *guesses*
++     * [DEFAULT_JUNK_BLOCK_SIZE]. Whenever that guess is wrong the surviving
++     * bytes are left misaligned, and a misaligned TS stream is not a cosmetic
++     * problem -- ffmpeg's `aac_adtstoasc` bitstream filter reads garbage where
++     * an ADTS header should be and the whole mux aborts partway through.
++     *
++     * This pass enforces the invariant the heuristic cannot: whatever comes
++     * out has the sync byte at every 188-byte stride. It is a no-op on data
++     * that is already aligned, so it costs nothing on clean streams.
++     */
++    fun resyncMpegTs(data: ByteArray): ByteArray {
++        val out = java.io.ByteArrayOutputStream(data.size)
++        val n = data.size
++        var i = 0
++        while (i < n && !(data[i] == MPEG_TS_SYNC && isSyncRun(data, i))) i++
++        while (i + MPEG_TS_PACKET_SIZE <= n) {
++            if (data[i] == MPEG_TS_SYNC) {
++                out.write(data, i, MPEG_TS_PACKET_SIZE)
++                i += MPEG_TS_PACKET_SIZE
++                continue
++            }
++            var j = i + 1
++            while (j + MPEG_TS_PACKET_SIZE <= n && !(data[j] == MPEG_TS_SYNC && isSyncRun(data, j))) j++
++            if (j + MPEG_TS_PACKET_SIZE > n) break
++            i = j
++        }
++        return out.toByteArray()
++    }
++
+     /**
+      * If [offset] looks like the start of a fake-image junk block, returns
+      * the EXCLUSIVE end offset (i.e. the index of the first byte AFTER the
+@@ -135,22 +221,39 @@ object AutoDetector {
+      * clamped to [data.size].
+      */
+     private fun detectJunkBlockEnd(data: ByteArray, offset: Int): Int {
+-        val isJpeg = offset + 2 < data.size &&
++        // A real JPEG is FF D8 FF followed by a segment marker (APPn / DQT /
++        // SOF0 / DHT / COM). Requiring that fourth byte cuts the false-positive
++        // rate of this 3-byte magic by ~16x -- and false positives here are not
++        // cosmetic, they excise real video from a stream that had no junk.
++        val isJpeg = offset + 3 < data.size &&
+             data[offset] == JPEG_HEADER[0] &&
+             data[offset + 1] == JPEG_HEADER[1] &&
+-            data[offset + 2] == JPEG_HEADER[2]
++            data[offset + 2] == JPEG_HEADER[2] &&
++            (data[offset + 3].toInt() and 0xFF).let { it in 0xE0..0xEF || it in setOf(0xDB, 0xC0, 0xC4, 0xFE) }
+         val isPng = offset + 3 < data.size &&
+             data[offset] == PNG_HEADER[0] &&
+             data[offset + 1] == PNG_HEADER[1] &&
+             data[offset + 2] == PNG_HEADER[2] &&
+             data[offset + 3] == PNG_HEADER[3]
+-        val isGif = offset + 2 < data.size &&
++        // Full 6-byte GIF signature ("GIF87a" / "GIF89a"), not just "GIF".
++        // The 3-byte prefix 47 49 46 is byte-identical to a legitimate MPEG-TS
++        // packet header (0x47 sync, payload_unit_start=1, PID 2374), so the
++        // short check shredded every such packet as if it were junk.
++        val isGif = offset + 5 < data.size &&
+             data[offset] == GIF_HEADER[0] &&
+             data[offset + 1] == GIF_HEADER[1] &&
+-            data[offset + 2] == GIF_HEADER[2]
++            data[offset + 2] == GIF_HEADER[2] &&
++            data[offset + 3] == '8'.code.toByte() &&
++            (data[offset + 4] == '7'.code.toByte() || data[offset + 4] == '9'.code.toByte()) &&
++            data[offset + 5] == 'a'.code.toByte()
+ 
+         if (!isJpeg && !isPng && !isGif) return -1
+ 
++        // Belt-and-braces against the same class of collision: if this offset
++        // sits on a valid MPEG-TS packet grid it is real video, not a disguise
++        // block. A genuine junk block never starts on a valid sync grid.
++        if (isMpegTsValidAt(data, offset)) return -1
++
+         val searchEnd = minOf(data.size, offset + JUNK_END_SEARCH_LIMIT)
+ 
+         var i = offset + 1
+diff --git a/lib/m3u8server/src/aniyomi/lib/m3u8server/M3u8HttpServer.kt b/lib/m3u8server/src/aniyomi/lib/m3u8server/M3u8HttpServer.kt
+index e766da0..2b7fb37 100644
+--- a/lib/m3u8server/src/aniyomi/lib/m3u8server/M3u8HttpServer.kt
++++ b/lib/m3u8server/src/aniyomi/lib/m3u8server/M3u8HttpServer.kt
+@@ -335,24 +335,84 @@ class M3u8HttpServer(
+         }
+     }
+ 
++    private val diagCount = java.util.concurrent.atomic.AtomicInteger(0)
++    private val diagLimit = 3
++    private val tsPacketSize = 188
++
++    /**
++     * Diagnostics for the first few segments of a session.
++     *
++     * Logged at ERROR level on purpose: Anikku's "Dump crash logs" only
++     * captures E-level lines, so anything quieter is invisible in a bug report.
++     * Capped so it can't spam a long download.
++     */
++    private fun logSegmentDiagnostics(raw: ByteArray, stripped: ByteArray, ranges: List<IntRange>) {
++        if (diagCount.getAndIncrement() >= diagLimit) return
++        fun hex(b: ByteArray, n: Int) = b.take(n).joinToString(" ") { "%02x".format(it) }
++        val misaligned = (0 until stripped.size / tsPacketSize).count {
++            stripped[it * tsPacketSize] != 0x47.toByte()
++        }
++        Log.e(
++            tag,
++            "DIAG seg#${diagCount.get()} raw=${raw.size} head=[${hex(raw, 16)}] " +
++                "junkBlocks=${ranges.size} ${ranges.take(6).joinToString { "@${it.first}+${it.last - it.first + 1}" }} " +
++                "stripped=${stripped.size} mod188=${stripped.size % tsPacketSize} " +
++                "misalignedPkts=$misaligned/${stripped.size / tsPacketSize} " +
++                "strippedHead=[${hex(stripped, 8)}]",
++        )
++    }
++
+     private fun stripInterleavedJunk(fullData: ByteArray): ByteArray {
++        // An already-perfect TS grid cannot contain injected junk, so leave it
++        // completely alone. Measured: a clean 1811944-byte segment (9638 exact
++        // packets) was being "corrected" by a spurious 33-byte match, which
++        // misaligned 5008 packets and broke the audio.
++        if (AutoDetector.isPristineMpegTs(fullData)) {
++            if (diagCount.getAndIncrement() < diagLimit) {
++                Log.e(tag, "DIAG pristine TS, passthrough: ${fullData.size} bytes")
++            }
++            return fullData
++        }
++
+         val skipRanges = AutoDetector.detectInterleavedSkips(fullData)
+-        if (skipRanges.isEmpty()) return fullData
+-        val strippedBytes = skipRanges.sumOf { it.last - it.first + 1 }
+-        val finalSize = fullData.size - strippedBytes
+-        Log.d(tag, "Stripping ${skipRanges.size} interleaved junk block(s) ($strippedBytes bytes total), final size: $finalSize bytes")
+-        val stripped = ByteArrayOutputStream(finalSize.coerceAtLeast(0))
+-        var cursor = 0
+-        for (range in skipRanges) {
+-            if (range.first > cursor) {
+-                stripped.write(copyRegion(fullData, cursor, range.first - cursor))
++        val heuristic = if (skipRanges.isEmpty()) {
++            fullData
++        } else {
++            val strippedBytes = skipRanges.sumOf { it.last - it.first + 1 }
++            val finalSize = fullData.size - strippedBytes
++            Log.d(
++                tag,
++                "Stripping ${skipRanges.size} interleaved junk block(s) ($strippedBytes bytes total), " +
++                    "final size: $finalSize bytes",
++            )
++            val stripped = ByteArrayOutputStream(finalSize.coerceAtLeast(0))
++            var cursor = 0
++            for (range in skipRanges) {
++                if (range.first > cursor) {
++                    stripped.write(copyRegion(fullData, cursor, range.first - cursor))
++                }
++                cursor = range.last + 1
++            }
++            if (cursor < fullData.size) {
++                stripped.write(copyRegion(fullData, cursor, fullData.size - cursor))
+             }
+-            cursor = range.last + 1
++            stripped.toByteArray()
+         }
+-        if (cursor < fullData.size) {
+-            stripped.write(copyRegion(fullData, cursor, fullData.size - cursor))
++
++        // Safety net. The pass above is a heuristic and guesses the junk length
++        // when it can't find a format boundary; a wrong guess leaves the TS
++        // grid misaligned, which surfaces downstream as
++        // "aac_adtstoasc: Error parsing ADTS frame header" and aborts the mux
++        // mid-download. Re-aligning guarantees what the heuristic cannot. It is
++        // a no-op on already-aligned data and is skipped entirely for non-TS
++        // payloads.
++        logSegmentDiagnostics(fullData, heuristic, skipRanges)
++        if (!AutoDetector.looksLikeMpegTs(heuristic)) return heuristic
++        val aligned = AutoDetector.resyncMpegTs(heuristic)
++        if (aligned.size != heuristic.size && diagCount.get() <= diagLimit) {
++            Log.e(tag, "DIAG resync ${heuristic.size} -> ${aligned.size} (Δ${aligned.size - heuristic.size})")
+         }
+-        return stripped.toByteArray()
++        return aligned
+     }
+ 
+     private fun decryptAes128Cbc(data: ByteArray, key: ByteArray, iv: String): ByteArray {

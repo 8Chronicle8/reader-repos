@@ -1,0 +1,23 @@
+# Node
+node_modules/
+test/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+
+# Playwright network-capture dumps (tools/*.py write these)
+tools/*.json
+
+# Local env / archives
+.env
+*.zip
+
+# Signing keystores - never commit private keys
+*.jks
+*.keystore
+
+# Run logs and local analysis output
+logs/
+graphify-out/
+*.part
