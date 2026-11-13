@@ -82,9 +82,15 @@ this plugin used (`series/<s>/chapters/<c>`), the site reader's
 (`chapters/<uuid>`); without a session they answer alike, so which honours a
 session cannot be seen from outside. 1.1.4 tries them in that order and logs
 each. 1.1.5 asks for the token before any chapter request, as the official
-plugin does (in all device tests a token request made after a locked chapter
-answer was refused); chapter ids come from the list stored when the novel is
-opened. Passing the site's bot detection by disguising the app as a browser is
+plugin does; chapter ids come from the list stored when the novel is opened.
+
+Device result for 1.1.5 (2026-11-14): `token request HTTP 403 challenge` as the
+very first request, `session cookie seen`, every address locked; the official
+plugin failed the same way at the same time (its owner reports it gets through
+about once a day). So request order was not the cause. What is left between
+the WebView and the app is the client itself, which the site's bot detection
+judges; passing it by disguising the app is not done here. Status: reading in
+the app is unavailable; everything else in the plugin works. Passing the site's bot detection by disguising the app as a browser is
 not done.
 
 Library paths stay `series/<slug>` and `series/<slug>/<chapterSlug>`; the

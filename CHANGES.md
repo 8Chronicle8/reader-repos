@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-11-14 — Fenrir: in-app reading unavailable (docs)
+
+1.1.5 on the phone: the token request was refused even as the first request
+(`token request HTTP 403 challenge`, `session cookie seen`), and the official
+plugin failed the same way. The token-first hypothesis behind 1.1.5 is
+therefore wrong; the 1.1.5 entry below is kept as it was written. The site
+refuses to issue reading tokens to the app's connection; the plugin keeps
+everything else working and points to WebView for reading. No code change.
+
 ## 2026-11-14 — Fenrir 1.1.5: token first, in the official plugin's order
 
 1.1.4 on the owner's phone (signed in): every address locked, token request
