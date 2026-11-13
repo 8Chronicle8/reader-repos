@@ -159,12 +159,13 @@ async function main() {
   {
     const site = fakeSite({ mode: 'A', text: TEXT });
     await assert.rejects(load(PLUGIN, site.fetch, new Storage()).parseChapter('series/novel/1'),
-      /WebView.*\[chapter 200 locked, mint 403 challenge, cookie not seen\]/);
+      /needs its check.*\[chapter request HTTP 200 locked; token request HTTP 403 challenge; session cookie not seen\]/);
     console.log('ok  no session -> asks for the WebView check, and says the cookie did not arrive');
     // A session cookie that arrives but is refused is told apart from a missing one.
     const refused = fakeSite({ mode: 'A', text: TEXT }); refused.verifyInWebView(0);
-    await assert.rejects(load(PLUGIN, refused.fetch, new Storage()).parseChapter('series/novel/1'), /mint 403 challenge, cookie seen\]/);
-    console.log('ok  session present but refused -> the diagnostic says "cookie seen"');
+    await assert.rejects(load(PLUGIN, refused.fetch, new Storage()).parseChapter('series/novel/1'),
+      /refused this app's connection even though your WebView check passed.*Read this chapter in WebView.*session cookie seen\]/);
+    console.log('ok  session present but refused -> says to read in WebView, diagnostic "session cookie seen"');
   }
   // 3-5. After the WebView check, every way the site may hand out the token.
   for (const mode of ['A', 'B', 'C']) {

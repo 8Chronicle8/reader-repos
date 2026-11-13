@@ -223,11 +223,11 @@ async function mint(target, diag, referer) {
   if (res.status === 429) throw rateLimited();
   var data = await res.json().catch(function () { return {}; });
   if (res.ok && data && data.active && data.token) {
-    diag.push('mint ' + res.status + ' ok' + (data.exchanges_remaining != null ? ' (' + data.exchanges_remaining + ' left)' : ''));
+    diag.push('token request HTTP ' + res.status + ' ok' + (data.exchanges_remaining != null ? ' (' + data.exchanges_remaining + ' left)' : ''));
     return { token: saveToken(data.token, data.expires_at, data.exchanges_remaining, target) };
   }
   var why = data && data.challenge_required ? 'challenge' : (data && data.active === false ? 'inactive' : 'refused');
-  diag.push('mint ' + res.status + ' ' + why);
+  diag.push('token request HTTP ' + res.status + ' ' + why);
   return { refused: why };
 }
 function rateLimited() {
@@ -240,15 +240,15 @@ async function cookieSeen(pageUrl) {
   try {
     var r = await fetchApi(pageUrl, { credentials: 'include', headers: { 'Accept': 'text/html' } });
     var m = (await r.text()).match(/hasReadCookie:(true|false|!0|!1)/);
-    return m ? (m[1] === 'true' || m[1] === '!0' ? 'cookie seen' : 'cookie not seen') : 'cookie unknown';
+    return m ? (m[1] === 'true' || m[1] === '!0' ? 'session cookie seen' : 'session cookie not seen') : 'session cookie unknown';
   } catch (e) {
-    return 'cookie unknown';
+    return 'session cookie unknown';
   }
 }
 function verifyError(diag) {
   var e = new Error('Fenrir Realm needs its check before this chapter can be read: open the chapter in WebView ' +
     '(globe icon), wait until the chapter text shows, then go back and reload. After that the plugin renews the ' +
-    'session by itself until the site asks for a new check. [' + diag.join(', ') + ']');
+    'session by itself until the site asks for a new check. [' + diag.join('; ') + ']');
   e.status = 403;
   return e;
 }
@@ -358,7 +358,7 @@ var Plugin = /** @class */ (function () {
     this.id = 'fenrirealm';
     this.name = 'Fenrir Realm-P';
     this.site = SITE;
-    this.version = '1.1.2';
+    this.version = '1.1.3';
     this.icon = 'icons/fenrirealm.png';
     // Genre ids are the site's numeric ids (genres[]=<id>); slugs are ignored.
     this.filters = {
@@ -427,15 +427,23 @@ var Plugin = /** @class */ (function () {
     var pageUrl = SITE + 'series/' + p.slug + '/' + p.chapter;
     var diag = [];
     var fail = async function () {
-      diag.push(await cookieSeen(pageUrl));
-      return verifyError(diag);
+      var seen = await cookieSeen(pageUrl);
+      diag.push(seen);
+      if (seen !== 'session cookie seen') return verifyError(diag);
+      // The WebView's session reached the site and was still refused: the site
+      // ties a reading session to the browser that passed its check (2026-11).
+      var e = new Error('Fenrir Realm refused this app\'s connection even though your WebView check passed: the ' +
+        'site only serves chapters to the browser that passed its check. Read this chapter in WebView (globe icon). [' +
+        diag.join('; ') + ']');
+      e.status = 403;
+      return e;
     };
     var load = async function (label) {
       var res = await fetchApi(url, { credentials: 'include', headers: siteHeaders(pageUrl, { 'X-Accepts-Encrypted-Content': '3' }) });
       if (res.status === 429) throw rateLimited();
       var data = res.ok ? await res.json() : null;
       var issued = captureIssued(res, data && (data.uuid || data.id));
-      diag.push(label + ' ' + res.status + (data ? ' ' + data.content_format : '') + (issued ? ' +token' : ''));
+      diag.push(label + ' request HTTP ' + res.status + (data ? ' ' + data.content_format : '') + (issued ? ' +token' : ''));
       return { status: res.status, data: data, issued: issued && issued.value };
     };
     var targetOf = function (c) {

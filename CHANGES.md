@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-11-13 (night) — Fenrir 1.1.3: the site refuses in-app reading
+
+The 1.1.2 device report was `[chapter 200 locked, mint 403 challenge, cookie
+seen]`: the WebView session reached the site and was refused anyway. The site
+ties reading to the browser that passed its check (visitor cookie `fr_vid`,
+IP, and a check that rejects automated clients). The plugin cannot read
+chapters in the app without disguising the app as a browser, which it will not
+do. 1.1.3 says so and points to WebView reading when the cookie arrives but is
+refused, keeps asking for the check when it does not arrive, and spells out the
+diagnostic (`chapter request HTTP 200 locked; ...`) so the status code is not
+mistaken for a chapter number.
+
 ## 2026-11-13 (evening) — Fenrir 1.1.2: same-origin requests, cookie diagnostic
 
 A device test of 1.1.1 reported `[chapter 200 locked, mint challenge]`: after

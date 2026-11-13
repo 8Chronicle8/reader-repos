@@ -38,11 +38,14 @@ serves to any visitor.
 
 Two sites need a one-time check in the app's WebView before they load:
 
-- **Fenrir Realm** asks for a captcha before it starts a reading session. Open
-  a chapter in WebView (globe icon), wait until its text shows, go back and
-  reload. The plugin then renews the session before it expires, across app
-  restarts, until the site asks for a new check. If a chapter still fails, the
-  error ends with a short `[...]` line; that line says where it stopped.
+- **Fenrir Realm:** browsing, search, chapter lists, filters and "Hide locked
+  chapters" work. Reading chapters inside the app currently does **not**: the
+  site serves chapter text only to the browser that passed its anti-bot check,
+  and refuses the app's own connection even with that browser's session
+  (tested on a phone, 2026-11-13). Read Fenrir chapters in WebView (globe
+  icon). The plugin says which case it hit in a `[...]` line at the end of
+  its message; if the site relaxes this, in-app reading works again with no
+  update.
 - **Novellunar** is behind a Cloudflare check; pass it once in WebView.
 
 Bright Novels can optionally route through a proxy you run

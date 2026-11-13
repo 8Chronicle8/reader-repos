@@ -69,6 +69,16 @@ reading cookie (`hasReadCookie` in the server-rendered chapter page). The
 check is Cap (proof of work, served from fenrirealm.com/cap/); the plugin does
 not solve it.
 
+Device result (2026-11-13, LNReader 2.1.4, Android 17): after passing the check
+in WebView, the plugin's requests carried the session cookie (the server's
+`hasReadCookie` was true) and the site still answered the chapter as locked and
+refused the token exchange. The site sets a visitor cookie `fr_vid` and binds
+reading to IP + visitor; its check also rejects automated browsers ("Blocked by
+instrumentation: automated_browser_detected"). It serves chapters only to the
+browser that passed the check. Making the app's HTTP client pass as that
+browser would be evading the site's bot detection, which this project does not
+do; the plugin reports the case and points to WebView reading.
+
 Library paths stay `series/<slug>` and `series/<slug>/<chapterSlug>`; the
 official plugin's shapes (`<slug>`, `…~~<uuid>`) are accepted too.
 
